@@ -56,7 +56,7 @@ def search_by_salary_range(coll, min_salary, max_salary):
         print(json.dumps(doc, indent=4, default=json_util.default))
 
 def main():
-    uri = "mongodb+srv://llm-bot:llm-bot@cluster0.ag6bk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+    uri = "<URI>"
     key_vault_namespace = "encryption.__keyVault"
     encrypted_database_name = "employee_data"
     encrypted_collection_name = "employee_salary"
