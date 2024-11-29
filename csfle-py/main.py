@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 from pymongo import MongoClient, errors
 from pymongo.encryption import ClientEncryption
-from pymongo.encryption_options import AutoEncryptionOpts
 from bson import Binary, Decimal128
 from bson.codec_options import CodecOptions
 from bson.decimal128 import create_decimal128_context
@@ -108,7 +107,7 @@ def find_all_without_decryption(coll):
 
 # Main
 if __name__ == "__main__":
-    uri = "<URI>"
+    uri = "mongodb+srv://llm-bot:llm-bot@cluster0.ag6bk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
     local_master_key_file = "local_master_key.txt"
     local_master_key = load_local_master_key(local_master_key_file)
     kms_providers = setup_kms_providers(local_master_key)

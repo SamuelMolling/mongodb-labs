@@ -56,7 +56,7 @@ def search_by_salary_range(coll, min_salary, max_salary):
         print(json.dumps(doc, indent=4, default=json_util.default))
 
 def main():
-    uri = "<URI>"
+    uri = "mongodb+srv://llm-bot:llm-bot@cluster0.ag6bk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
     key_vault_namespace = "encryption.__keyVault"
     encrypted_database_name = "employee_data"
     encrypted_collection_name = "employee_salary"
@@ -71,9 +71,11 @@ def main():
         kms_providers=kms_providers,
         key_vault_namespace=key_vault_namespace,
         crypt_shared_lib_path="./mongo_crypt_shared_v1-macos-arm64-enterprise-8.0.3/lib/mongo_crypt_v1.dylib",
+        encrypted_fields_map=encrypted_fields_map,
     )
     
     client = MongoClient(uri, auto_encryption_opts=auto_encryption_opts)
+    
     
     db = client[encrypted_database_name]
     collection = db[encrypted_collection_name]
