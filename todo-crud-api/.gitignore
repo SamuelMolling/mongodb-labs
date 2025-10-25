@@ -1,0 +1,36 @@
+# Binários compilados
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Diretórios de build
+/bin/
+/pkg/
+/vendor/
+
+# Arquivos de configuração sensíveis
+.env
+*.env.local
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependências Go
+go.work
+go.work.sum
+
+# Logs
+*.log
+
+# Arquivos temporários
+tmp/
+temp/

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Aplicação de gerenciamento de tarefas com Go e MongoDB">
+    <title>Todo List - Gerenciador de Tarefas</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <div class="header">
+            <h1>📝 Todo List</h1>
+            <p>Gerencie suas tarefas de forma simples e eficiente</p>
+        </div>
+
+        <!-- Estatísticas -->
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.total }}</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.pending }}</div>
+                <div class="stat-label">Pendentes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.completed }}</div>
+                <div class="stat-label">Concluídas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ stats.highPriority }}</div>
+                <div class="stat-label">Alta Prioridade</div>
+            </div>
+        </div>
+
+        <!-- Card Principal -->
+        <div class="main-card">
+            <!-- Formulário de Nova Tarefa -->
+            <div class="task-form">
+                <h2 style="margin-bottom: 1rem;">➕ Nova Tarefa</h2>
+
+                <div class="form-group">
+                    <label for="taskName">Nome da Tarefa *</label>
+                    <input
+                        type="text"
+                        id="taskName"
+                        v-model="newTask.name"
+                        class="form-input"
+                        placeholder="Digite o nome da tarefa..."
+                        @keyup.enter="createTask"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="taskDescription">Descrição</label>
+                    <textarea
+                        id="taskDescription"
+                        v-model="newTask.description"
+                        class="form-textarea"
+                        placeholder="Adicione uma descrição (opcional)..."
+                    ></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="taskPriority">Prioridade</label>
+                        <select id="taskPriority" v-model="newTask.priority" class="form-select">
+                            <option value="low">Baixa</option>
+                            <option value="medium">Média</option>
+                            <option value="high">Alta</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taskDueDate">Data de Vencimento</label>
+                        <input
+                            type="date"
+                            id="taskDueDate"
+                            v-model="newTask.dueDate"
+                            class="form-input"
+                        >
+                    </div>
+                </div>
+
+                <button
+                    @click="createTask"
+                    class="btn btn-primary"
+                    :disabled="loading || !newTask.name.trim()"
+                >
+                    {{ loading ? 'Salvando...' : 'Adicionar Tarefa' }}
+                </button>
+            </div>
+
+            <hr style="margin: 2rem 0; border: none; border-top: 2px solid var(--border-color);">
+
+            <!-- Filtros -->
+            <div class="filters">
+                <button
+                    class="filter-btn"
+                    :class="{ active: filter === 'all' }"
+                    @click="setFilter('all')"
+                >
+                    Todas
+                </button>
+                <button
+                    class="filter-btn"
+                    :class="{ active: filter === 'pending' }"
+                    @click="setFilter('pending')"
+                >
+                    Pendentes
+                </button>
+                <button
+                    class="filter-btn"
+                    :class="{ active: filter === 'completed' }"
+                    @click="setFilter('completed')"
+                >
+                    Concluídas
+                </button>
+                <div style="margin-left: auto; display: flex; gap: 0.5rem;">
+                    <button
+                        class="filter-btn"
+                        :class="{ active: priorityFilter === 'high' }"
+                        @click="setPriorityFilter('high')"
+                    >
+                        🔴 Alta
+                    </button>
+                    <button
+                        class="filter-btn"
+                        :class="{ active: priorityFilter === 'medium' }"
+                        @click="setPriorityFilter('medium')"
+                    >
+                        🟡 Média
+                    </button>
+                    <button
+                        class="filter-btn"
+                        :class="{ active: priorityFilter === 'low' }"
+                        @click="setPriorityFilter('low')"
+                    >
+                        🔵 Baixa
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div v-if="loading && tasks.length === 0" class="loading">
+                <p>Carregando tarefas...</p>
+            </div>
+
+            <!-- Error -->
+            <div v-if="error" style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                {{ error }}
+            </div>
+
+            <!-- Lista de Tarefas -->
+            <ul class="tasks-list" v-if="!loading || tasks.length > 0">
+                <li
+                    v-for="task in filteredTasks"
+                    :key="task.id"
+                    class="task-item"
+                    :class="{ completed: task.completed }"
+                >
+                    <div class="task-header">
+                        <div class="task-content">
+                            <div class="task-name">{{ task.name }}</div>
+                            <div v-if="task.description" class="task-description">
+                                {{ task.description }}
+                            </div>
+                            <div class="task-meta">
+                                <span class="task-priority" :class="'priority-' + task.priority">
+                                    {{ task.priority === 'low' ? 'Baixa' : task.priority === 'medium' ? 'Média' : 'Alta' }}
+                                </span>
+                                <span v-if="task.dueDate">
+                                    📅 {{ formatDate(task.dueDate) }}
+                                    <span v-if="!task.completed && isOverdue(task.dueDate)" style="color: var(--danger-color); font-weight: 600;">
+                                        (Atrasada)
+                                    </span>
+                                </span>
+                                <span style="color: var(--text-secondary);">
+                                    Criada em {{ formatDate(task.createdAt) }}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="task-actions">
+                            <button
+                                @click="toggleTask(task.id)"
+                                class="btn btn-small btn-success"
+                                title="Marcar como concluída/pendente"
+                            >
+                                {{ task.completed ? '↩️' : '✓' }}
+                            </button>
+                            <button
+                                @click="openEditModal(task)"
+                                class="btn btn-small btn-primary"
+                                title="Editar tarefa"
+                            >
+                                ✏️
+                            </button>
+                            <button
+                                @click="deleteTask(task.id)"
+                                class="btn btn-small btn-danger"
+                                title="Excluir tarefa"
+                            >
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                </li>
+            </ul>
+
+            <!-- Empty State -->
+            <div v-if="!loading && filteredTasks.length === 0" class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <div class="empty-state-text">
+                    {{ tasks.length === 0 ? 'Nenhuma tarefa criada ainda.' : 'Nenhuma tarefa encontrada com os filtros aplicados.' }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Edição -->
+        <div class="modal" :class="{ active: editingTask }" @click.self="closeEditModal">
+            <div class="modal-content" v-if="editingTask">
+                <div class="modal-header">
+                    <h2 class="modal-title">✏️ Editar Tarefa</h2>
+                    <button class="close-btn" @click="closeEditModal">&times;</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="editTaskName">Nome da Tarefa *</label>
+                    <input
+                        type="text"
+                        id="editTaskName"
+                        v-model="editingTask.name"
+                        class="form-input"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="editTaskDescription">Descrição</label>
+                    <textarea
+                        id="editTaskDescription"
+                        v-model="editingTask.description"
+                        class="form-textarea"
+                    ></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="editTaskPriority">Prioridade</label>
+                        <select id="editTaskPriority" v-model="editingTask.priority" class="form-select">
+                            <option value="low">Baixa</option>
+                            <option value="medium">Média</option>
+                            <option value="high">Alta</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editTaskDueDate">Data de Vencimento</label>
+                        <input
+                            type="date"
+                            id="editTaskDueDate"
+                            v-model="editingTask.dueDate"
+                            class="form-input"
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input
+                            type="checkbox"
+                            v-model="editingTask.completed"
+                            style="width: auto;"
+                        >
+                        Tarefa concluída
+                    </label>
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                    <button
+                        @click="updateTask"
+                        class="btn btn-primary"
+                        :disabled="loading || !editingTask.name.trim()"
+                    >
+                        {{ loading ? 'Salvando...' : 'Salvar Alterações' }}
+                    </button>
+                    <button
+                        @click="closeEditModal"
+                        class="btn"
+                        style="background: var(--border-color);"
+                    >
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
