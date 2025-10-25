@@ -1,8 +1,7 @@
+// Package middleware provides HTTP middleware functions for the API.
 package middleware
 
 import (
-	"strings"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -57,29 +56,4 @@ func SimpleCORS() gin.HandlerFunc {
 
 		c.Next()
 	}
-}
-
-// isCORSAllowed checks if the origin is in the allowed list
-func isCORSAllowed(origin string, allowedOrigins []string) bool {
-	for _, allowed := range allowedOrigins {
-		// Allow wildcard
-		if allowed == "*" {
-			return true
-		}
-
-		// Allow exact match
-		if strings.EqualFold(allowed, origin) {
-			return true
-		}
-
-		// Allow subdomain wildcard match
-		if strings.HasPrefix(allowed, "*.") {
-			domain := strings.TrimPrefix(allowed, "*.")
-			if strings.HasSuffix(origin, domain) {
-				return true
-			}
-		}
-	}
-
-	return false
 }

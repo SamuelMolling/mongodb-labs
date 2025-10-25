@@ -1,3 +1,5 @@
+// Package main is the entry point for the Todo API application.
+// It initializes the server, connects to MongoDB, and sets up all routes and handlers.
 package main
 
 import (
@@ -37,12 +39,12 @@ func main() {
 	// Initialize index manager and ensure indexes exist
 	indexManager := repository.NewIndexManager(collection)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	if err := indexManager.EnsureIndexes(ctx); err != nil {
 		log.Printf("Warning: Error ensuring indexes: %v", err)
 		// Continue anyway - indexes are not critical for basic functionality
 	}
+	cancel() // Cancel context after index operations are done
 
 	// Initialize repository, service, and handler
 	taskRepo := repository.NewTaskRepository(db, cfg.MongoDB.Collection)
@@ -55,7 +57,8 @@ func main() {
 	// Start the server
 	log.Printf("Server starting on port %s...", cfg.Server.Port)
 	if err := router.Run(":" + cfg.Server.Port); err != nil {
-		log.Fatalf("Error starting server: %v", err)
+		disconnectMongoDB(mongoClient) // Ensure cleanup before exit
+		log.Fatalf("Error starting server: %v", err) //nolint:gocritic // exitAfterDefer is acceptable here as we need to exit on critical failure
 	}
 }
 
@@ -99,8 +102,8 @@ func setupRouter(cfg *config.Config, taskHandler *handler.TaskHandler) *gin.Engi
 	router := gin.New()
 
 	// Global middlewares
-	router.Use(gin.Recovery())                              // Recovery middleware
-	router.Use(middleware.Logger())                         // Custom logger
+	router.Use(gin.Recovery())                                     // Recovery middleware
+	router.Use(middleware.Logger())                                // Custom logger
 	router.Use(middleware.CORSMiddleware(cfg.CORS.AllowedOrigins)) // CORS
 
 	// Serve static files (frontend)
@@ -113,13 +116,13 @@ func setupRouter(cfg *config.Config, taskHandler *handler.TaskHandler) *gin.Engi
 		// Task routes
 		tasks := api.Group("/tasks")
 		{
-			tasks.POST("", taskHandler.CreateTask)              // POST /api/v1/tasks
-			tasks.GET("", taskHandler.GetAllTasks)              // GET /api/v1/tasks
-			tasks.GET("/stats", taskHandler.GetTaskStats)       // GET /api/v1/tasks/stats
-			tasks.GET("/:id", taskHandler.GetTaskByID)          // GET /api/v1/tasks/:id
-			tasks.PUT("/:id", taskHandler.UpdateTask)           // PUT /api/v1/tasks/:id
+			tasks.POST("", taskHandler.CreateTask)                       // POST /api/v1/tasks
+			tasks.GET("", taskHandler.GetAllTasks)                       // GET /api/v1/tasks
+			tasks.GET("/stats", taskHandler.GetTaskStats)                // GET /api/v1/tasks/stats
+			tasks.GET("/:id", taskHandler.GetTaskByID)                   // GET /api/v1/tasks/:id
+			tasks.PUT("/:id", taskHandler.UpdateTask)                    // PUT /api/v1/tasks/:id
 			tasks.PATCH("/:id/toggle", taskHandler.ToggleTaskCompletion) // PATCH /api/v1/tasks/:id/toggle
-			tasks.DELETE("/:id", taskHandler.DeleteTask)        // DELETE /api/v1/tasks/:id
+			tasks.DELETE("/:id", taskHandler.DeleteTask)                 // DELETE /api/v1/tasks/:id
 		}
 	}
 

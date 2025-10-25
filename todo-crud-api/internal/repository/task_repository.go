@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"todo-list-golang/internal/models"
@@ -75,7 +76,11 @@ func (r *taskRepository) FindAll(ctx context.Context, filter *models.TaskFilter)
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() {
+		if err := cursor.Close(ctx); err != nil {
+			log.Printf("Error closing cursor: %v", err)
+		}
+	}()
 
 	var tasks []*models.Task
 	if err := cursor.All(ctx, &tasks); err != nil {
@@ -95,8 +100,8 @@ func (r *taskRepository) FindByID(ctx context.Context, id primitive.ObjectID) (*
 	var task models.Task
 	err := r.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&task)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("task not found")
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, errors.New(models.ErrTaskNotFound)
 		}
 		return nil, err
 	}
@@ -132,7 +137,7 @@ func (r *taskRepository) Update(ctx context.Context, id primitive.ObjectID, task
 	}
 
 	if result.MatchedCount == 0 {
-		return errors.New("task not found")
+		return errors.New(models.ErrTaskNotFound)
 	}
 
 	return nil
@@ -146,7 +151,7 @@ func (r *taskRepository) Delete(ctx context.Context, id primitive.ObjectID) erro
 	}
 
 	if result.DeletedCount == 0 {
-		return errors.New("task not found")
+		return errors.New(models.ErrTaskNotFound)
 	}
 
 	return nil

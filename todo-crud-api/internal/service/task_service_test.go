@@ -13,13 +13,13 @@ import (
 
 // Mock Repository para testes
 type mockTaskRepository struct {
-	tasks          map[primitive.ObjectID]*models.Task
-	createFunc     func(ctx context.Context, task *models.Task) error
-	findAllFunc    func(ctx context.Context, filter *models.TaskFilter) ([]*models.Task, error)
-	findByIDFunc   func(ctx context.Context, id primitive.ObjectID) (*models.Task, error)
-	updateFunc     func(ctx context.Context, id primitive.ObjectID, task *models.Task) error
-	deleteFunc     func(ctx context.Context, id primitive.ObjectID) error
-	countFunc      func(ctx context.Context, filter *models.TaskFilter) (int64, error)
+	tasks        map[primitive.ObjectID]*models.Task
+	createFunc   func(ctx context.Context, task *models.Task) error
+	findAllFunc  func(ctx context.Context, filter *models.TaskFilter) ([]*models.Task, error)
+	findByIDFunc func(ctx context.Context, id primitive.ObjectID) (*models.Task, error)
+	updateFunc   func(ctx context.Context, id primitive.ObjectID, task *models.Task) error
+	deleteFunc   func(ctx context.Context, id primitive.ObjectID) error
+	countFunc    func(ctx context.Context, filter *models.TaskFilter) (int64, error)
 }
 
 func (m *mockTaskRepository) Create(ctx context.Context, task *models.Task) error {
@@ -51,7 +51,7 @@ func (m *mockTaskRepository) FindByID(ctx context.Context, id primitive.ObjectID
 	}
 	task, exists := m.tasks[id]
 	if !exists {
-		return nil, errors.New("task not found")
+		return nil, errors.New(models.ErrTaskNotFound)
 	}
 	return task, nil
 }
@@ -61,7 +61,7 @@ func (m *mockTaskRepository) Update(ctx context.Context, id primitive.ObjectID, 
 		return m.updateFunc(ctx, id, task)
 	}
 	if _, exists := m.tasks[id]; !exists {
-		return errors.New("task not found")
+		return errors.New(models.ErrTaskNotFound)
 	}
 	m.tasks[id] = task
 	return nil
@@ -72,7 +72,7 @@ func (m *mockTaskRepository) Delete(ctx context.Context, id primitive.ObjectID) 
 		return m.deleteFunc(ctx, id)
 	}
 	if _, exists := m.tasks[id]; !exists {
-		return errors.New("task not found")
+		return errors.New(models.ErrTaskNotFound)
 	}
 	delete(m.tasks, id)
 	return nil
@@ -342,7 +342,7 @@ func TestDeleteTask(t *testing.T) {
 
 func TestGetTaskStats(t *testing.T) {
 	mockRepo := &mockTaskRepository{
-		countFunc: func(ctx context.Context, filter *models.TaskFilter) (int64, error) {
+		countFunc: func(_ context.Context, filter *models.TaskFilter) (int64, error) {
 			if filter == nil {
 				return 10, nil
 			}

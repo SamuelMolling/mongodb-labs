@@ -1,3 +1,4 @@
+// Package handler provides HTTP handlers for the API endpoints.
 package handler
 
 import (
@@ -115,7 +116,7 @@ func (h *TaskHandler) GetTaskByID(c *gin.Context) {
 
 	task, err := h.service.GetTaskByID(c.Request.Context(), id)
 	if err != nil {
-		if err.Error() == "task not found" {
+		if err.Error() == models.ErrTaskNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
 			return
 		}
@@ -149,7 +150,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 
 	task, err := h.service.UpdateTask(c.Request.Context(), id, &req)
 	if err != nil {
-		if err.Error() == "task not found" {
+		if err.Error() == models.ErrTaskNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
 			return
 		}
@@ -175,7 +176,7 @@ func (h *TaskHandler) ToggleTaskCompletion(c *gin.Context) {
 
 	task, err := h.service.ToggleTaskCompletion(c.Request.Context(), id)
 	if err != nil {
-		if err.Error() == "task not found" {
+		if err.Error() == models.ErrTaskNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
 			return
 		}
@@ -200,7 +201,7 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 
 	err := h.service.DeleteTask(c.Request.Context(), id)
 	if err != nil {
-		if err.Error() == "task not found" {
+		if err.Error() == models.ErrTaskNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
 			return
 		}

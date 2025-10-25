@@ -1,3 +1,4 @@
+// Package models defines the data structures and business logic for the application.
 package models
 
 import (
@@ -6,6 +7,18 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
+)
+
+// Priority constants
+const (
+	PriorityLow    = "low"
+	PriorityMedium = "medium"
+	PriorityHigh   = "high"
+)
+
+// Error constants
+const (
+	ErrTaskNotFound = "task not found"
 )
 
 // Task represents a task in the system
@@ -63,12 +76,12 @@ func (t *Task) Validate() error {
 	// Validate the priority
 	if t.Priority != "" {
 		priority := strings.ToLower(t.Priority)
-		if priority != "low" && priority != "medium" && priority != "high" {
+		if priority != PriorityLow && priority != PriorityMedium && priority != PriorityHigh {
 			return errors.New("invalid priority. Use: low, medium or high")
 		}
 		t.Priority = priority
 	} else {
-		t.Priority = "medium" // Default priority
+		t.Priority = PriorityMedium // Default priority
 	}
 
 	// Validate the due date
@@ -128,5 +141,5 @@ func (r *UpdateTaskRequest) ApplyUpdates(task *Task) {
 // HasUpdates checks if the UpdateTaskRequest has any updates
 func (r *UpdateTaskRequest) HasUpdates() bool {
 	return r.Name != nil || r.Description != nil || r.Completed != nil ||
-	       r.Priority != nil || r.DueDate != nil
+		r.Priority != nil || r.DueDate != nil
 }

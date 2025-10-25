@@ -1,3 +1,4 @@
+// Package service contains the business logic layer of the application.
 package service
 
 import (
@@ -24,9 +25,9 @@ type TaskService interface {
 
 // TaskStats represents task statistics
 type TaskStats struct {
-	Total       int64 `json:"total"`
-	Completed   int64 `json:"completed"`
-	Pending     int64 `json:"pending"`
+	Total        int64 `json:"total"`
+	Completed    int64 `json:"completed"`
+	Pending      int64 `json:"pending"`
 	HighPriority int64 `json:"highPriority"`
 }
 
@@ -196,9 +197,9 @@ func (s *taskService) GetTaskStats(ctx context.Context) (*TaskStats, error) {
 	}
 
 	return &TaskStats{
-		Total:       total,
-		Completed:   completed,
-		Pending:     pending,
+		Total:        total,
+		Completed:    completed,
+		Pending:      pending,
 		HighPriority: highPriority,
 	}, nil
 }

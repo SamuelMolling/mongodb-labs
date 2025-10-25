@@ -1,3 +1,4 @@
+// Package config handles application configuration loading from environment variables.
 package config
 
 import (
@@ -11,9 +12,9 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	Server   ServerConfig
-	MongoDB  MongoDBConfig
-	CORS     CORSConfig
+	Server  ServerConfig
+	MongoDB MongoDBConfig
+	CORS    CORSConfig
 }
 
 // ServerConfig holds HTTP server configuration

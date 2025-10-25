@@ -1,3 +1,4 @@
+// Package repository provides data access layer for MongoDB operations.
 package repository
 
 import (
@@ -9,6 +10,62 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// indexModels defines all required indexes for the tasks collection
+// This is the single source of truth for index definitions
+var indexModels = []mongo.IndexModel{
+	// Index on 'completed' field for filtering
+	// Used in: GET /tasks?completed=true/false
+	{
+		Keys: bson.D{{Key: "completed", Value: 1}},
+		Options: options.Index().
+			SetName("idx_completed"),
+	},
+
+	// Index on 'priority' field for filtering
+	// Used in: GET /tasks?priority=high/medium/low
+	{
+		Keys: bson.D{{Key: "priority", Value: 1}},
+		Options: options.Index().
+			SetName("idx_priority"),
+	},
+
+	// Compound index on 'completed' and 'priority'
+	// Used for combined filters: GET /tasks?completed=false&priority=high
+	{
+		Keys: bson.D{
+			{Key: "completed", Value: 1},
+			{Key: "priority", Value: 1},
+		},
+		Options: options.Index().
+			SetName("idx_completed_priority"),
+	},
+
+	// Index on 'createdAt' for sorting (descending for newest first)
+	// Used in: Default sorting of tasks
+	{
+		Keys: bson.D{{Key: "createdAt", Value: -1}},
+		Options: options.Index().
+			SetName("idx_created_at"),
+	},
+
+	// Index on 'dueDate' for queries and sorting
+	// Useful for finding overdue tasks
+	{
+		Keys: bson.D{{Key: "dueDate", Value: 1}},
+		Options: options.Index().
+			SetName("idx_due_date").
+			SetSparse(true), // Only index documents that have dueDate
+	},
+
+	// Index on '_v' (version) for optimistic locking
+	// Useful for tracking document versions
+	{
+		Keys: bson.D{{Key: "_v", Value: 1}},
+		Options: options.Index().
+			SetName("idx_version"),
+	},
+}
 
 // IndexManager manages MongoDB indexes for the tasks collection
 type IndexManager struct {
@@ -27,62 +84,8 @@ func NewIndexManager(collection *mongo.Collection) *IndexManager {
 func (im *IndexManager) CreateIndexes(ctx context.Context) error {
 	log.Println("Creating MongoDB indexes...")
 
-	indexes := []mongo.IndexModel{
-		// Index on 'completed' field for filtering
-		// Used in: GET /tasks?completed=true/false
-		{
-			Keys: bson.D{{Key: "completed", Value: 1}},
-			Options: options.Index().
-				SetName("idx_completed"),
-		},
-
-		// Index on 'priority' field for filtering
-		// Used in: GET /tasks?priority=high/medium/low
-		{
-			Keys: bson.D{{Key: "priority", Value: 1}},
-			Options: options.Index().
-				SetName("idx_priority"),
-		},
-
-		// Compound index on 'completed' and 'priority'
-		// Used for combined filters: GET /tasks?completed=false&priority=high
-		{
-			Keys: bson.D{
-				{Key: "completed", Value: 1},
-				{Key: "priority", Value: 1},
-			},
-			Options: options.Index().
-				SetName("idx_completed_priority"),
-		},
-
-		// Index on 'createdAt' for sorting (descending for newest first)
-		// Used in: Default sorting of tasks
-		{
-			Keys: bson.D{{Key: "createdAt", Value: -1}},
-			Options: options.Index().
-				SetName("idx_created_at"),
-		},
-
-		// Index on 'dueDate' for queries and sorting
-		// Useful for finding overdue tasks
-		{
-			Keys: bson.D{{Key: "dueDate", Value: 1}},
-			Options: options.Index().
-				SetName("idx_due_date").
-				SetSparse(true), // Only index documents that have dueDate
-		},
-
-		// Index on '_v' (version) for optimistic locking
-		// Useful for tracking document versions
-		{
-			Keys: bson.D{{Key: "_v", Value: 1}},
-			Options: options.Index().
-				SetName("idx_version"),
-		},
-	}
-
 	// Create indexes
-	names, err := im.collection.Indexes().CreateMany(ctx, indexes)
+	names, err := im.collection.Indexes().CreateMany(ctx, indexModels)
 	if err != nil {
 		log.Printf("Error creating indexes: %v", err)
 		return err
@@ -102,7 +105,11 @@ func (im *IndexManager) DropIndexes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer cursor.Close(ctx)
+	defer func() {
+		if err := cursor.Close(ctx); err != nil {
+			log.Printf("Error closing cursor: %v", err)
+		}
+	}()
 
 	var indexes []bson.M
 	if err := cursor.All(ctx, &indexes); err != nil {
@@ -133,7 +140,11 @@ func (im *IndexManager) ListIndexes(ctx context.Context) ([]bson.M, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() {
+		if err := cursor.Close(ctx); err != nil {
+			log.Printf("Error closing cursor: %v", err)
+		}
+	}()
 
 	var indexes []bson.M
 	if err := cursor.All(ctx, &indexes); err != nil {
@@ -176,7 +187,11 @@ func (im *IndexManager) GetIndexStats(ctx context.Context) ([]bson.M, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() {
+		if err := cursor.Close(ctx); err != nil {
+			log.Printf("Error closing cursor: %v", err)
+		}
+	}()
 
 	var stats []bson.M
 	if err := cursor.All(ctx, &stats); err != nil {
@@ -205,14 +220,12 @@ func (im *IndexManager) EnsureIndexes(ctx context.Context) error {
 		}
 	}
 
-	// Check if our indexes exist
-	requiredIndexes := []string{
-		"idx_completed",
-		"idx_priority",
-		"idx_completed_priority",
-		"idx_created_at",
-		"idx_due_date",
-		"idx_version",
+	// Extract required index names from our index models
+	requiredIndexes := make([]string, 0, len(indexModels))
+	for _, model := range indexModels {
+		if model.Options != nil && model.Options.Name != nil {
+			requiredIndexes = append(requiredIndexes, *model.Options.Name)
+		}
 	}
 
 	missingIndexes := []string{}

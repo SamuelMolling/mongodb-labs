@@ -70,7 +70,7 @@ func TestTaskValidate(t *testing.T) {
 			name: "valid high priority",
 			task: Task{
 				Name:     "Test",
-				Priority: "high",
+				Priority: PriorityHigh,
 			},
 			wantErr: false,
 		},
@@ -117,7 +117,7 @@ func TestCreateTaskRequestToTask(t *testing.T) {
 		t.Errorf("Expected trimmed description, got %s", task.Description)
 	}
 
-	if task.Priority != "high" {
+	if task.Priority != PriorityHigh {
 		t.Errorf("Expected lowercase priority, got %s", task.Priority)
 	}
 
@@ -140,7 +140,7 @@ func TestUpdateTaskRequestApplyUpdates(t *testing.T) {
 	newName := "Updated Name"
 	newDesc := "Updated Description"
 	completed := true
-	newPriority := "high"
+	newPriority := PriorityHigh
 
 	req := &UpdateTaskRequest{
 		Name:        &newName,
@@ -163,7 +163,7 @@ func TestUpdateTaskRequestApplyUpdates(t *testing.T) {
 		t.Error("Expected completed to be true")
 	}
 
-	if task.Priority != "high" {
+	if task.Priority != PriorityHigh {
 		t.Errorf("Expected priority to be high, got %s", task.Priority)
 	}
 
