@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queryable Encryption HR Platform - MongoDB Lab</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Queryable Encryption HR Platform</h1>
+            <p class="subtitle">MongoDB Queryable Encryption Demo - Secure Employee Management</p>
+        </header>
+
+        <div class="info-banner">
+            <h3>🎓 About This Lab</h3>
+            <p>This application demonstrates <strong>MongoDB Queryable Encryption</strong>, allowing you to search on encrypted fields while keeping sensitive data secure.</p>
+            <ul>
+                <li><strong>Equality Queries:</strong> Search by Name or SSN (encrypted)</li>
+                <li><strong>Range Queries:</strong> Search by Salary range (encrypted)</li>
+                <li><strong>Data Protection:</strong> Sensitive fields are encrypted at rest and in transit</li>
+            </ul>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="openTab('employees')">👥 Employees</button>
+            <button class="tab-button" onclick="openTab('add')">➕ Add Employee</button>
+            <button class="tab-button" onclick="openTab('search')">🔍 Search (Encrypted)</button>
+            <button class="tab-button" onclick="openTab('about')">ℹ️ About</button>
+        </div>
+
+        <!-- Employees Tab -->
+        <div id="employees" class="tab-content active">
+            <h2>Employee List</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalEmployees">0</div>
+                    <div class="stat-label">Total Employees</div>
+                </div>
+            </div>
+            <div class="filter-section">
+                <select id="departmentFilter" onchange="loadEmployees()">
+                    <option value="">All Departments</option>
+                    <option value="Engineering">Engineering</option>
+                    <option value="Product">Product</option>
+                    <option value="HR">HR</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Sales">Sales</option>
+                    <option value="Finance">Finance</option>
+                </select>
+            </div>
+            <div id="employeeList" class="employee-list">
+                <div class="loading">Loading employees...</div>
+            </div>
+        </div>
+
+        <!-- Add Employee Tab -->
+        <div id="add" class="tab-content">
+            <h2>Add New Employee</h2>
+            <form id="addEmployeeForm" class="employee-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Full Name *</label>
+                        <input type="text" id="name" name="name" required placeholder="John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email *</label>
+                        <input type="email" id="email" name="email" required placeholder="john@company.com">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ssn">SSN (Encrypted) *</label>
+                        <input type="text" id="ssn" name="ssn" required placeholder="123-45-6789" pattern="[0-9]{3}-[0-9]{2}-[0-9]{4}">
+                        <small>Format: XXX-XX-XXXX</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="salary">Annual Salary (Encrypted) *</label>
+                        <input type="number" id="salary" name="salary" required placeholder="75000" min="0">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="position">Position *</label>
+                        <select id="position" name="position" required>
+                            <option value="">Select Position</option>
+                            <option value="Software Engineer">Software Engineer</option>
+                            <option value="Senior Software Engineer">Senior Software Engineer</option>
+                            <option value="Product Manager">Product Manager</option>
+                            <option value="HR Specialist">HR Specialist</option>
+                            <option value="Marketing Manager">Marketing Manager</option>
+                            <option value="Sales Representative">Sales Representative</option>
+                            <option value="Financial Analyst">Financial Analyst</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="department">Department *</label>
+                        <select id="department" name="department" required>
+                            <option value="">Select Department</option>
+                            <option value="Engineering">Engineering</option>
+                            <option value="Product">Product</option>
+                            <option value="HR">HR</option>
+                            <option value="Marketing">Marketing</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Finance">Finance</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="company">Company *</label>
+                        <input type="text" id="company" name="company" required placeholder="MongoDB Inc.">
+                    </div>
+                    <div class="form-group">
+                        <label for="startDate">Start Date</label>
+                        <input type="date" id="startDate" name="startDate">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Add Employee</button>
+            </form>
+            <div id="addResult" class="result-message"></div>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="search" class="tab-content">
+            <h2>🔍 Search on Encrypted Fields</h2>
+            <p class="search-info">Demonstrate queryable encryption by searching on encrypted fields</p>
+
+            <!-- Search Sub-Tabs -->
+            <div class="sub-tabs">
+                <button class="sub-tab-button active" onclick="openSearchTab('searchByName')">By Name</button>
+                <button class="sub-tab-button" onclick="openSearchTab('searchBySSN')">By SSN</button>
+                <button class="sub-tab-button" onclick="openSearchTab('searchBySalary')">By Salary</button>
+                <button class="sub-tab-button" onclick="openSearchTab('searchAdvanced')">Advanced</button>
+            </div>
+
+            <!-- Search by Name -->
+            <div id="searchByName" class="sub-tab-content active">
+                <div class="search-section">
+                    <h3>🔐 Search by Name (Equality Query on Encrypted Field)</h3>
+                    <p style="color: #666; margin-bottom: 15px;">Search for employees by their exact name. The name field is encrypted with deterministic encryption, allowing exact match queries.</p>
+                    <div class="search-form">
+                        <input type="text" id="searchName" placeholder="Enter exact name (e.g., Xavier Scott)..." class="search-input">
+                        <button onclick="searchByName()" class="btn btn-primary">Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search by SSN -->
+            <div id="searchBySSN" class="sub-tab-content">
+                <div class="search-section">
+                    <h3>🔐 Search by SSN (Equality Query on Encrypted Field)</h3>
+                    <p style="color: #666; margin-bottom: 15px;">Search for an employee by their Social Security Number. SSN is encrypted and queryable for exact matches.</p>
+                    <div class="search-form">
+                        <input type="text" id="searchSSN" placeholder="Enter SSN (XXX-XX-XXXX)..." class="search-input">
+                        <button onclick="searchBySSN()" class="btn btn-primary">Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search by Salary -->
+            <div id="searchBySalary" class="sub-tab-content">
+                <div class="search-section">
+                    <h3>🔐 Search by Salary Range (Range Query on Encrypted Field)</h3>
+                    <p style="color: #666; margin-bottom: 15px;">Search for employees within a salary range. The salary field uses range-searchable encryption.</p>
+                    <div class="search-form">
+                        <input type="number" id="minSalary" placeholder="Minimum salary (e.g., 100000)" class="search-input">
+                        <input type="number" id="maxSalary" placeholder="Maximum salary (e.g., 150000)" class="search-input">
+                        <button onclick="searchBySalary()" class="btn btn-primary">Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Search -->
+            <div id="searchAdvanced" class="sub-tab-content">
+                <div class="search-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px;">
+                    <h3 style="color: white;">🔥 Advanced Search (Combined Encrypted Fields)</h3>
+                    <p style="color: rgba(255,255,255,0.9); margin-bottom: 15px;">Search by Name AND/OR Salary Range - combine multiple encrypted field queries!</p>
+                    <div class="search-form">
+                        <input type="text" id="advancedName" placeholder="Employee name (optional)" class="search-input" style="flex: 2;">
+                        <input type="number" id="advancedMinSalary" placeholder="Min salary (optional)" class="search-input">
+                        <input type="number" id="advancedMaxSalary" placeholder="Max salary (optional)" class="search-input">
+                        <button onclick="advancedSearch()" class="btn" style="background: white; color: #667eea; font-weight: bold;">Advanced Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="searchResults" class="search-results"></div>
+        </div>
+
+        <!-- About Tab -->
+        <div id="about" class="tab-content">
+            <h2>About MongoDB Queryable Encryption</h2>
+            <div class="about-content">
+                <h3>What is Queryable Encryption?</h3>
+                <p>MongoDB Queryable Encryption is a feature that allows you to encrypt sensitive data while still being able to query it. This provides an additional layer of security for sensitive information.</p>
+
+                <h3>Key Features:</h3>
+                <ul>
+                    <li><strong>Equality Queries:</strong> Search for exact matches on encrypted fields (e.g., find employee by name)</li>
+                    <li><strong>Range Queries:</strong> Search within ranges on encrypted numeric fields (e.g., salary ranges)</li>
+                    <li><strong>Client-Side Encryption:</strong> Data is encrypted on the client before being sent to the database</li>
+                    <li><strong>Zero Knowledge:</strong> The database server never sees the unencrypted data</li>
+                </ul>
+
+                <h3>Architecture:</h3>
+                <p>This demo uses:</p>
+                <ul>
+                    <li><strong>Local Master Key:</strong> Stored in <code>local_master_key.txt</code></li>
+                    <li><strong>Key Vault:</strong> MongoDB collection storing data encryption keys</li>
+                    <li><strong>Crypt Shared Library:</strong> Native library for encryption operations</li>
+                    <li><strong>Auto-Encryption:</strong> Transparent encryption/decryption by the driver</li>
+                </ul>
+
+                <h3>Encrypted Fields in This Demo:</h3>
+                <ul>
+                    <li><strong>Name</strong> - Encrypted with equality queries</li>
+                    <li><strong>SSN</strong> - Encrypted with equality queries</li>
+                    <li><strong>Salary</strong> - Encrypted with range queries</li>
+                </ul>
+
+                <div class="warning-box">
+                    <h4>⚠️ Important Notes:</h4>
+                    <ul>
+                        <li>This is a <strong>demonstration environment</strong> for learning purposes</li>
+                        <li>In production, use AWS KMS, Azure Key Vault, or Google Cloud KMS</li>
+                        <li>Keep your master key secure and backed up</li>
+                        <li>Queryable encryption requires MongoDB Enterprise Edition</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>MongoDB Queryable Encryption Lab - Educational Demo | <a href="https://www.mongodb.com/docs/manual/core/queryable-encryption/" target="_blank">Documentation</a></p>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

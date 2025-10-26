@@ -1,0 +1,57 @@
+version: 2
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - unparam
+    - goconst
+    - gosec
+    - revive
+    - gocritic
+    - errorlint
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    check-shadowing: true
+
+  gosec:
+    excludes:
+      - G104
+
+  revive:
+    confidence: 0.8
+    rules:
+      - name: var-naming
+      - name: context-as-argument
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+
+  staticcheck:
+    checks: ["all"]
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - unparam
