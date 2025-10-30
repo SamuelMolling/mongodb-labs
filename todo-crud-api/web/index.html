@@ -1,311 +1,180 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Aplicação de gerenciamento de tarefas com Go e MongoDB">
-    <title>Todo List - Gerenciador de Tarefas</title>
-
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-    <!-- CSS -->
+    <title>Todo List - MongoDB Lab</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div id="app">
-        <!-- Header -->
-        <div class="header">
-            <h1>📝 Todo List</h1>
-            <p>Gerencie suas tarefas de forma simples e eficiente</p>
-        </div>
+    <div class="container">
+        <header>
+            <h1>📝 Todo List - CRUD API</h1>
+            <p class="subtitle">MongoDB Todo Management - Simple Task Tracker</p>
+        </header>
 
-        <!-- Estatísticas -->
-        <div class="stats-container">
-            <div class="stat-card">
-                <div class="stat-value">{{ stats.total }}</div>
-                <div class="stat-label">Total</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ stats.pending }}</div>
-                <div class="stat-label">Pendentes</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ stats.completed }}</div>
-                <div class="stat-label">Concluídas</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ stats.highPriority }}</div>
-                <div class="stat-label">Alta Prioridade</div>
-            </div>
-        </div>
-
-        <!-- Card Principal -->
-        <div class="main-card">
-            <!-- Formulário de Nova Tarefa -->
-            <div class="task-form">
-                <h2 style="margin-bottom: 1rem;">➕ Nova Tarefa</h2>
-
-                <div class="form-group">
-                    <label for="taskName">Nome da Tarefa *</label>
-                    <input
-                        type="text"
-                        id="taskName"
-                        v-model="newTask.name"
-                        class="form-input"
-                        placeholder="Digite o nome da tarefa..."
-                        @keyup.enter="createTask"
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="taskDescription">Descrição</label>
-                    <textarea
-                        id="taskDescription"
-                        v-model="newTask.description"
-                        class="form-textarea"
-                        placeholder="Adicione uma descrição (opcional)..."
-                    ></textarea>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="taskPriority">Prioridade</label>
-                        <select id="taskPriority" v-model="newTask.priority" class="form-select">
-                            <option value="low">Baixa</option>
-                            <option value="medium">Média</option>
-                            <option value="high">Alta</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="taskDueDate">Data de Vencimento</label>
-                        <input
-                            type="date"
-                            id="taskDueDate"
-                            v-model="newTask.dueDate"
-                            class="form-input"
-                        >
-                    </div>
-                </div>
-
-                <button
-                    @click="createTask"
-                    class="btn btn-primary"
-                    :disabled="loading || !newTask.name.trim()"
-                >
-                    {{ loading ? 'Salvando...' : 'Adicionar Tarefa' }}
-                </button>
-            </div>
-
-            <hr style="margin: 2rem 0; border: none; border-top: 2px solid var(--border-color);">
-
-            <!-- Filtros -->
-            <div class="filters">
-                <button
-                    class="filter-btn"
-                    :class="{ active: filter === 'all' }"
-                    @click="setFilter('all')"
-                >
-                    Todas
-                </button>
-                <button
-                    class="filter-btn"
-                    :class="{ active: filter === 'pending' }"
-                    @click="setFilter('pending')"
-                >
-                    Pendentes
-                </button>
-                <button
-                    class="filter-btn"
-                    :class="{ active: filter === 'completed' }"
-                    @click="setFilter('completed')"
-                >
-                    Concluídas
-                </button>
-                <div style="margin-left: auto; display: flex; gap: 0.5rem;">
-                    <button
-                        class="filter-btn"
-                        :class="{ active: priorityFilter === 'high' }"
-                        @click="setPriorityFilter('high')"
-                    >
-                        🔴 Alta
-                    </button>
-                    <button
-                        class="filter-btn"
-                        :class="{ active: priorityFilter === 'medium' }"
-                        @click="setPriorityFilter('medium')"
-                    >
-                        🟡 Média
-                    </button>
-                    <button
-                        class="filter-btn"
-                        :class="{ active: priorityFilter === 'low' }"
-                        @click="setPriorityFilter('low')"
-                    >
-                        🔵 Baixa
-                    </button>
-                </div>
-            </div>
-
-            <!-- Loading -->
-            <div v-if="loading && tasks.length === 0" class="loading">
-                <p>Carregando tarefas...</p>
-            </div>
-
-            <!-- Error -->
-            <div v-if="error" style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                {{ error }}
-            </div>
-
-            <!-- Lista de Tarefas -->
-            <ul class="tasks-list" v-if="!loading || tasks.length > 0">
-                <li
-                    v-for="task in filteredTasks"
-                    :key="task.id"
-                    class="task-item"
-                    :class="{ completed: task.completed }"
-                >
-                    <div class="task-header">
-                        <div class="task-content">
-                            <div class="task-name">{{ task.name }}</div>
-                            <div v-if="task.description" class="task-description">
-                                {{ task.description }}
-                            </div>
-                            <div class="task-meta">
-                                <span class="task-priority" :class="'priority-' + task.priority">
-                                    {{ task.priority === 'low' ? 'Baixa' : task.priority === 'medium' ? 'Média' : 'Alta' }}
-                                </span>
-                                <span v-if="task.dueDate">
-                                    📅 {{ formatDate(task.dueDate) }}
-                                    <span v-if="!task.completed && isOverdue(task.dueDate)" style="color: var(--danger-color); font-weight: 600;">
-                                        (Atrasada)
-                                    </span>
-                                </span>
-                                <span style="color: var(--text-secondary);">
-                                    Criada em {{ formatDate(task.createdAt) }}
-                                </span>
-                            </div>
-                        </div>
-                        <div class="task-actions">
-                            <button
-                                @click="toggleTask(task.id)"
-                                class="btn btn-small btn-success"
-                                title="Marcar como concluída/pendente"
-                            >
-                                {{ task.completed ? '↩️' : '✓' }}
-                            </button>
-                            <button
-                                @click="openEditModal(task)"
-                                class="btn btn-small btn-primary"
-                                title="Editar tarefa"
-                            >
-                                ✏️
-                            </button>
-                            <button
-                                @click="deleteTask(task.id)"
-                                class="btn btn-small btn-danger"
-                                title="Excluir tarefa"
-                            >
-                                🗑️
-                            </button>
-                        </div>
-                    </div>
-                </li>
+        <div class="info-banner">
+            <h3>🎓 About This Lab</h3>
+            <p>This application demonstrates a <strong>complete CRUD API</strong> with MongoDB, allowing you to manage tasks with priorities, due dates, and filters.</p>
+            <ul>
+                <li><strong>Create:</strong> Add new tasks with priority and due date</li>
+                <li><strong>Read:</strong> List and filter tasks by status and priority</li>
+                <li><strong>Update:</strong> Edit existing tasks and mark as completed</li>
+                <li><strong>Delete:</strong> Remove tasks that are no longer needed</li>
             </ul>
+        </div>
 
-            <!-- Empty State -->
-            <div v-if="!loading && filteredTasks.length === 0" class="empty-state">
-                <div class="empty-state-icon">📋</div>
-                <div class="empty-state-text">
-                    {{ tasks.length === 0 ? 'Nenhuma tarefa criada ainda.' : 'Nenhuma tarefa encontrada com os filtros aplicados.' }}
+        <div class="tabs">
+            <button class="tab-button active" onclick="openTab('tasks')">📋 Tasks</button>
+            <button class="tab-button" onclick="openTab('add')">➕ New Task</button>
+            <button class="tab-button" onclick="openTab('about')">ℹ️ About</button>
+        </div>
+
+        <!-- Tasks Tab -->
+        <div id="tasks" class="tab-content active">
+            <h2>Task List</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalTasks">0</div>
+                    <div class="stat-label">Total Tasks</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="pendingTasks">0</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="completedTasks">0</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="highPriorityTasks">0</div>
+                    <div class="stat-label">High Priority</div>
+                </div>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label>Status:</label>
+                    <button class="filter-btn active" data-filter="all" onclick="setStatusFilter('all')">All</button>
+                    <button class="filter-btn" data-filter="pending" onclick="setStatusFilter('pending')">Pending</button>
+                    <button class="filter-btn" data-filter="completed" onclick="setStatusFilter('completed')">Completed</button>
+                </div>
+                <div class="filter-group">
+                    <label>Priority:</label>
+                    <button class="filter-btn" data-priority="high" onclick="setPriorityFilter('high')">🔴 High</button>
+                    <button class="filter-btn" data-priority="medium" onclick="setPriorityFilter('medium')">🟡 Medium</button>
+                    <button class="filter-btn" data-priority="low" onclick="setPriorityFilter('low')">🔵 Low</button>
+                </div>
+            </div>
+
+            <div id="taskList" class="task-list">
+                <div class="loading">Loading tasks...</div>
             </div>
         </div>
 
-        <!-- Modal de Edição -->
-        <div class="modal" :class="{ active: editingTask }" @click.self="closeEditModal">
-            <div class="modal-content" v-if="editingTask">
-                <div class="modal-header">
-                    <h2 class="modal-title">✏️ Editar Tarefa</h2>
-                    <button class="close-btn" @click="closeEditModal">&times;</button>
-                </div>
-
-                <div class="form-group">
-                    <label for="editTaskName">Nome da Tarefa *</label>
-                    <input
-                        type="text"
-                        id="editTaskName"
-                        v-model="editingTask.name"
-                        class="form-input"
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="editTaskDescription">Descrição</label>
-                    <textarea
-                        id="editTaskDescription"
-                        v-model="editingTask.description"
-                        class="form-textarea"
-                    ></textarea>
+        <!-- Add Task Tab -->
+        <div id="add" class="tab-content">
+            <h2>Add New Task</h2>
+            <form id="addTaskForm" class="task-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="taskName">Task Name *</label>
+                        <input type="text" id="taskName" name="name" required placeholder="Enter task name">
+                    </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="editTaskPriority">Prioridade</label>
-                        <select id="editTaskPriority" v-model="editingTask.priority" class="form-select">
-                            <option value="low">Baixa</option>
-                            <option value="medium">Média</option>
-                            <option value="high">Alta</option>
+                        <label for="taskDescription">Description</label>
+                        <textarea id="taskDescription" name="description" placeholder="Add a description (optional)" rows="4"></textarea>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="taskPriority">Priority *</label>
+                        <select id="taskPriority" name="priority" required>
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
                         </select>
                     </div>
-
                     <div class="form-group">
-                        <label for="editTaskDueDate">Data de Vencimento</label>
-                        <input
-                            type="date"
-                            id="editTaskDueDate"
-                            v-model="editingTask.dueDate"
-                            class="form-input"
-                        >
+                        <label for="taskDueDate">Due Date</label>
+                        <input type="date" id="taskDueDate" name="dueDate">
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                        <input
-                            type="checkbox"
-                            v-model="editingTask.completed"
-                            style="width: auto;"
-                        >
-                        Tarefa concluída
-                    </label>
-                </div>
+                <button type="submit" class="btn btn-primary">Add Task</button>
+            </form>
+            <div id="addResult" class="result-message"></div>
+        </div>
 
-                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
-                    <button
-                        @click="updateTask"
-                        class="btn btn-primary"
-                        :disabled="loading || !editingTask.name.trim()"
-                    >
-                        {{ loading ? 'Salvando...' : 'Salvar Alterações' }}
-                    </button>
-                    <button
-                        @click="closeEditModal"
-                        class="btn"
-                        style="background: var(--border-color);"
-                    >
-                        Cancelar
-                    </button>
+        <!-- About Tab -->
+        <div id="about" class="tab-content">
+            <h2>About Todo List CRUD API</h2>
+            <div class="about-content">
+                <h3>What is this project?</h3>
+                <p>This is a demonstration project that implements a complete REST API for task management (Todo List) using Go and MongoDB. The project demonstrates CRUD operations (Create, Read, Update, Delete) in a practical way.</p>
+
+                <h3>Key Features:</h3>
+                <ul>
+                    <li><strong>Create Tasks:</strong> Add new tasks with name, description, priority, and due date</li>
+                    <li><strong>List Tasks:</strong> View all your tasks with filters by status and priority</li>
+                    <li><strong>Update Tasks:</strong> Edit task information and mark as completed</li>
+                    <li><strong>Delete Tasks:</strong> Remove tasks that are no longer needed</li>
+                    <li><strong>Advanced Filters:</strong> Filter tasks by status (pending/completed) and priority (low/medium/high)</li>
+                    <li><strong>Statistics:</strong> View total tasks, pending, completed, and high priority count</li>
+                </ul>
+
+                <h3>Technologies Used:</h3>
+                <ul>
+                    <li><strong>Backend:</strong> Go (Golang) with Gin Web Framework</li>
+                    <li><strong>Database:</strong> MongoDB</li>
+                    <li><strong>Frontend:</strong> HTML5, CSS3, Vanilla JavaScript</li>
+                    <li><strong>API:</strong> RESTful API following REST standards</li>
+                </ul>
+
+                <h3>Data Structure:</h3>
+                <p>Each task contains the following fields:</p>
+                <ul>
+                    <li><strong>ID:</strong> Unique task identifier</li>
+                    <li><strong>Name:</strong> Task title</li>
+                    <li><strong>Description:</strong> Additional details about the task</li>
+                    <li><strong>Priority:</strong> Priority level (low, medium, high)</li>
+                    <li><strong>Status:</strong> Completed or pending</li>
+                    <li><strong>Due Date:</strong> Deadline for completion</li>
+                    <li><strong>Created Date:</strong> When the task was created</li>
+                    <li><strong>Updated Date:</strong> Last modification timestamp</li>
+                </ul>
+
+                <h3>API Endpoints:</h3>
+                <ul>
+                    <li><code>GET /api/v1/tasks</code> - List all tasks</li>
+                    <li><code>GET /api/v1/tasks/stats</code> - Get statistics</li>
+                    <li><code>POST /api/v1/tasks</code> - Create new task</li>
+                    <li><code>PUT /api/v1/tasks/:id</code> - Update existing task</li>
+                    <li><code>PATCH /api/v1/tasks/:id/toggle</code> - Toggle task status</li>
+                    <li><code>DELETE /api/v1/tasks/:id</code> - Delete task</li>
+                </ul>
+
+                <div class="warning-box">
+                    <h4>⚠️ Important Notes:</h4>
+                    <ul>
+                        <li>This is a <strong>demonstration environment</strong> for educational purposes</li>
+                        <li>The project demonstrates best practices for developing REST APIs</li>
+                        <li>Ideal for learning backend concepts with Go and MongoDB</li>
+                        <li>Code available in the MongoDB Labs repository</li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
-    <script src="/static/js/app.js"></script>
+    <footer>
+        <p>MongoDB Labs - Todo List CRUD API</p>
+    </footer>
+
+    <script src="/static/js/app.js?v=8"></script>
 </body>
 </html>
