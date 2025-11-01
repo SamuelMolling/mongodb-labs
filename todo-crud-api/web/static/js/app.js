@@ -4,7 +4,6 @@ const API_BASE = '/api/v1';
 // State
 let currentStatusFilter = 'all';
 let currentPriorityFilter = '';
-let allTasks = [];
 
 // Tab Management
 function openTab(tabName) {
@@ -44,7 +43,8 @@ function setStatusFilter(filter) {
         btn.classList.toggle('active', btn.dataset.filter === filter);
     });
 
-    renderFilteredTasks();
+    // Reload tasks from database with filter
+    loadTasks();
 }
 
 function setPriorityFilter(priority) {
@@ -61,7 +61,8 @@ function setPriorityFilter(priority) {
         btn.classList.toggle('active', btn.dataset.priority === currentPriorityFilter);
     });
 
-    renderFilteredTasks();
+    // Reload tasks from database with filter
+    loadTasks();
 }
 
 // Load Statistics
@@ -85,46 +86,39 @@ async function loadTasks() {
     taskList.innerHTML = '<div class="loading">Loading tasks...</div>';
 
     try {
-        const response = await fetch(`${API_BASE}/tasks`);
-        allTasks = await response.json();
+        // Build query string with filters
+        const params = new URLSearchParams();
 
-        if (allTasks.length === 0) {
-            taskList.innerHTML = '<div class="loading">No tasks found</div>';
+        // Add status filter
+        if (currentStatusFilter === 'completed') {
+            params.append('completed', 'true');
+        } else if (currentStatusFilter === 'pending') {
+            params.append('completed', 'false');
+        }
+
+        // Add priority filter
+        if (currentPriorityFilter) {
+            params.append('priority', currentPriorityFilter);
+        }
+
+        // Build URL with query parameters
+        const url = `${API_BASE}/tasks${params.toString() ? '?' + params.toString() : ''}`;
+        console.log('Fetching tasks with URL:', url); // Debug log
+
+        const response = await fetch(url);
+        const tasks = await response.json();
+
+        if (tasks.length === 0) {
+            taskList.innerHTML = '<div class="empty-state">No tasks found</div>';
             return;
         }
 
-        renderFilteredTasks();
+        taskList.innerHTML = tasks.map(task => createTaskCard(task)).join('');
         loadStats();
     } catch (error) {
         console.error('Error loading tasks:', error);
         taskList.innerHTML = '<div class="result-message error">Error loading tasks</div>';
     }
-}
-
-// Render Filtered Tasks
-function renderFilteredTasks() {
-    let filteredTasks = allTasks;
-
-    // Apply status filter
-    if (currentStatusFilter === 'completed') {
-        filteredTasks = filteredTasks.filter(task => task.completed);
-    } else if (currentStatusFilter === 'pending') {
-        filteredTasks = filteredTasks.filter(task => !task.completed);
-    }
-
-    // Apply priority filter
-    if (currentPriorityFilter) {
-        filteredTasks = filteredTasks.filter(task => task.priority === currentPriorityFilter);
-    }
-
-    const taskList = document.getElementById('taskList');
-
-    if (filteredTasks.length === 0) {
-        taskList.innerHTML = '<div class="empty-state">No tasks found</div>';
-        return;
-    }
-
-    taskList.innerHTML = filteredTasks.map(task => createTaskCard(task)).join('');
 }
 
 // Create Simple Task Card

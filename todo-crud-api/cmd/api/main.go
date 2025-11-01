@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"todo-list-golang/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/event"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -67,8 +70,96 @@ func connectMongoDB(cfg *config.Config) (*mongo.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.MongoDB.Timeout)*time.Second)
 	defer cancel()
 
-	// Client options
-	clientOptions := options.Client().ApplyURI(cfg.MongoDB.URI)
+	// Create a command monitor to log all MongoDB queries
+	cmdMonitor := &event.CommandMonitor{
+		Started: func(_ context.Context, evt *event.CommandStartedEvent) {
+			// Decode BSON command to a map
+			var commandDoc bson.M
+			if err := bson.Unmarshal(evt.Command, &commandDoc); err != nil {
+				log.Printf("[MongoDB Query] Command: %s | Error decoding: %v", evt.CommandName, err)
+				return
+			}
+
+			// Extract only the relevant query parts
+			relevantParts := bson.M{}
+
+			switch evt.CommandName {
+			case "find":
+				if filter, ok := commandDoc["filter"]; ok {
+					relevantParts["filter"] = filter
+				}
+				if sort, ok := commandDoc["sort"]; ok {
+					relevantParts["sort"] = sort
+				}
+				if limit, ok := commandDoc["limit"]; ok {
+					relevantParts["limit"] = limit
+				}
+				if skip, ok := commandDoc["skip"]; ok {
+					relevantParts["skip"] = skip
+				}
+
+			case "insert":
+				if documents, ok := commandDoc["documents"]; ok {
+					relevantParts["documents"] = documents
+				}
+
+			case "update":
+				if filter, ok := commandDoc["filter"]; ok {
+					relevantParts["filter"] = filter
+				}
+				if updates, ok := commandDoc["updates"]; ok {
+					relevantParts["updates"] = updates
+				}
+
+			case "delete":
+				if deletes, ok := commandDoc["deletes"]; ok {
+					relevantParts["deletes"] = deletes
+				}
+
+			case "aggregate":
+				if pipeline, ok := commandDoc["pipeline"]; ok {
+					relevantParts["pipeline"] = pipeline
+				}
+
+			case "count", "countDocuments":
+				if query, ok := commandDoc["query"]; ok {
+					relevantParts["query"] = query
+				}
+
+			default:
+				// For other commands, show the full command minus metadata
+				for k, v := range commandDoc {
+					if k != "$clusterTime" && k != "$db" && k != "lsid" && k != "$readPreference" {
+						relevantParts[k] = v
+					}
+				}
+			}
+
+			// Convert to pretty JSON
+			if len(relevantParts) > 0 {
+				queryJSON, err := json.MarshalIndent(relevantParts, "", "  ")
+				if err != nil {
+					log.Printf("[MongoDB Query] %s | %v", evt.CommandName, relevantParts)
+				} else {
+					log.Printf("[MongoDB Query] %s\n%s", evt.CommandName, string(queryJSON))
+				}
+			} else {
+				log.Printf("[MongoDB Query] %s (no filter/query)", evt.CommandName)
+			}
+		},
+		Succeeded: func(_ context.Context, evt *event.CommandSucceededEvent) {
+			log.Printf("[MongoDB Query] %s | Duration: %v | ✓ SUCCESS\n", evt.CommandName, evt.Duration)
+		},
+		Failed: func(_ context.Context, evt *event.CommandFailedEvent) {
+			log.Printf("[MongoDB Query] %s | Duration: %v | ✗ FAILED | Error: %v\n",
+				evt.CommandName, evt.Duration, evt.Failure)
+		},
+	}
+
+	// Client options with command monitor
+	clientOptions := options.Client().
+		ApplyURI(cfg.MongoDB.URI).
+		SetMonitor(cmdMonitor)
 
 	// Connect to MongoDB
 	client, err := mongo.Connect(ctx, clientOptions)

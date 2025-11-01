@@ -1,4 +1,4 @@
-.PHONY: help build run test test-coverage lint fmt vet clean install-tools
+.PHONY: help build run queries test test-coverage lint fmt vet clean install-tools
 
 # Variables
 BINARY_NAME=todo-api
@@ -30,6 +30,13 @@ build:
 run: build
 	@echo "$(CYAN)Running $(BINARY_NAME)...$(NC)"
 	@./bin/$(BINARY_NAME)
+
+## queries: Run test script to generate multiple MongoDB queries
+queries:
+	@echo "$(CYAN)Running query test script...$(NC)"
+	@echo "$(CYAN)Make sure the API server is running on port 8080$(NC)"
+	@$(GO) run ./cmd/test/main.go
+	@echo "$(GREEN)✓ Query tests completed$(NC)"
 
 ## test: Run all tests
 test:
