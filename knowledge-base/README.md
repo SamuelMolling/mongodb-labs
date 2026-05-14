@@ -12,19 +12,33 @@ small so the MongoDB pieces are visible. It is not production-ready.
 
 ## 🎯 What this lab demonstrates
 
+The UI is one search box. Behind it, four MongoDB-powered stages compose
+into a single retrieval pipeline (`/api/search/smart`):
+
+| Stage | MongoDB feature | Purpose |
+|---|---|---|
+| Keyword | **Atlas Search** (`$search`) | rank articles by BM25 + fuzzy term match |
+| Semantic | **Atlas Vector Search** (`$vectorSearch`) | rank chunks by embedding similarity |
+| Fusion | aggregation pipeline | **Reciprocal Rank Fusion** combines both rankings |
+| Rerank | **Voyage rerank-2** via `ai.mongodb.com` | final precision pass on the top passages |
+
+Plus the foundations a real knowledge base needs:
+
 | Capability | MongoDB feature |
 |---|---|
 | Operational CRUD (articles, users, workspaces) | Regular collections + indexes |
-| Keyword search with fuzzy matching & highlights | **Atlas Search** (`$search`) |
-| Semantic search over chunk embeddings | **Atlas Vector Search** (`$vectorSearch`) |
-| Hybrid search (best of both) | **Reciprocal Rank Fusion** in an aggregation pipeline |
-| Retrieval-Augmented Generation context fetch | `$vectorSearch` + `$lookup` + Voyage rerank |
 | Pre-filtering vectors by tenant / tag | `filter` field in the vector index |
+| Chunking by Markdown section with breadcrumbs | section-aware splitter |
 | Search analytics | `search_history` collection |
+
+The endpoints `/api/search/keyword`, `/semantic`, `/hybrid` and `/ask`
+remain exposed so the article can demonstrate each stage independently
+via curl — the UI does not call them.
 
 > The point of the lab: you can build a full “AI search platform” without
 > Elasticsearch, Pinecone, Weaviate, or any other extra component. MongoDB
-> handles operational data and vectors with the same query language.
+> handles operational data and vectors with the same query language, and
+> the user never has to know about any of it.
 
 ---
 
@@ -87,7 +101,7 @@ knowledge-base/
 │   │       ├── users.js
 │   │       ├── workspaces.js
 │   │       ├── articles.js          # CRUD + auto re-index on write
-│   │       └── search.js            # keyword / semantic / hybrid / ask
+│   │       └── search.js            # smart (UI) + keyword / semantic / hybrid / ask
 │   └── scripts/
 │       ├── create-indexes.js        # builds Atlas Search + Vector indexes
 │       ├── seed.js                  # demo workspace + sample articles
@@ -95,10 +109,9 @@ knowledge-base/
 │       └── generators.js            # topic × tech × problem article generator
 └── frontend/
     ├── app/
-    │   ├── page.js                  # landing
+    │   ├── page.js                  # landing + search box
     │   ├── articles/                # list, create, view, edit
-    │   ├── search/                  # three-mode search UI
-    │   └── ask/                     # RAG-style retrieval UI
+    │   └── search/                  # single-box search UI (hybrid + rerank)
     ├── components/                  # NavBar, ArticleForm
     └── lib/                         # API client + workspace resolver
 ```
@@ -116,7 +129,32 @@ knowledge-base/
 - A **[Voyage AI](https://www.voyageai.com/)** API key (free trial credits
   available).
 
-### 1. Backend
+### Quick start with `make` (recommended)
+
+A `Makefile` at the project root wraps every step. From `knowledge-base/`:
+
+```bash
+make help          # list all targets
+make setup        # install deps + create indexes + small seed
+# edit backend/.env  (MONGODB_URI, VOYAGE_API_KEY) before running setup
+make dev          # runs backend + frontend in parallel; Ctrl+C stops both
+```
+
+Other useful targets:
+
+| Command | Effect |
+|---|---|
+| `make install` | install backend + frontend deps; copy `.env.example` if missing |
+| `make indexes` | (re)build Atlas Search and Vector Search indexes |
+| `make seed` | small demo seed (6 articles) |
+| `make seed-bulk COUNT=5000` | bulk seed N synthetic articles with Voyage embeddings |
+| `make seed-bulk-noembed COUNT=10000` | bulk seed without Voyage (no API spend) |
+| `make dev-backend` / `make dev-frontend` | run just one side |
+| `make health` | curl the `/health` endpoint |
+| `make stop` | kill anything occupying ports 4010 + 3010 |
+| `make clean` | remove `node_modules` and `.next` |
+
+### Manual setup (without make)
 
 ```bash
 cd backend
@@ -125,7 +163,7 @@ cp .env.example .env
 # edit .env: MONGODB_URI, VOYAGE_API_KEY
 npm run create-indexes      # creates regular + Atlas Search + Vector indexes
 npm run seed                # creates demo workspace + ~6 articles + embeddings
-npm run dev                 # starts API on http://localhost:8080
+npm run dev                 # starts API on http://localhost:4010
 ```
 
 The seed script prints the demo `workspace` id when it finishes. Copy it.
@@ -312,17 +350,18 @@ should always pre-filter by tenant id this way.
 | GET | `/api/articles/:id` | | |
 | PUT | `/api/articles/:id` | `{ title?, content?, tags?, ... }` | Re-indexes if title/content changed |
 | DELETE | `/api/articles/:id` | | Also deletes chunks |
-| POST | `/api/search/keyword` | `{ query, workspaceId, limit }` | Atlas Search |
-| POST | `/api/search/semantic` | `{ query, workspaceId, limit, withRerank }` | Vector Search (+ optional rerank) |
-| POST | `/api/search/hybrid` | `{ query, workspaceId, limit, k }` | RRF |
-| POST | `/api/search/ask` | `{ question, workspaceId, topK }` | RAG context |
+| POST | `/api/search/smart` | `{ query, workspaceId, limit }` | **What the UI calls.** Hybrid + Voyage rerank |
+| POST | `/api/search/keyword` | `{ query, workspaceId, limit }` | Atlas Search alone (educational) |
+| POST | `/api/search/semantic` | `{ query, workspaceId, limit, withRerank }` | Vector Search alone (educational) |
+| POST | `/api/search/hybrid` | `{ query, workspaceId, limit, k }` | RRF without rerank (educational) |
+| POST | `/api/search/ask` | `{ question, workspaceId, topK }` | RAG context (educational) |
 | GET | `/api/search/history` | `?userId=&workspaceId=` | |
 
 ### Curl examples
 
 ```bash
 # create an article (will be chunked + embedded automatically)
-curl -X POST http://localhost:8080/api/articles \
+curl -X POST http://localhost:4010/api/articles \
   -H 'Content-Type: application/json' \
   -d '{
     "workspaceId":"<WS_ID>",
@@ -334,12 +373,12 @@ curl -X POST http://localhost:8080/api/articles \
   }'
 
 # hybrid search
-curl -X POST http://localhost:8080/api/search/hybrid \
+curl -X POST http://localhost:4010/api/search/hybrid \
   -H 'Content-Type: application/json' \
   -d '{"query":"how to combine keyword and semantic search","workspaceId":"<WS_ID>"}'
 
 # RAG-style retrieval
-curl -X POST http://localhost:8080/api/search/ask \
+curl -X POST http://localhost:4010/api/search/ask \
   -H 'Content-Type: application/json' \
   -d '{"question":"why store embeddings in MongoDB?","workspaceId":"<WS_ID>","topK":5}'
 ```
@@ -371,24 +410,60 @@ curl -X POST http://localhost:8080/api/search/ask \
    tokenised snippets the frontend renders inline with `<mark>`. Look at
    [`frontend/app/search/page.js`](frontend/app/search/page.js).
 
-5. **Sentence-aware chunking**. The chunker walks back to the nearest
-   sentence break instead of cutting at a fixed character count, which
-   keeps embeddings semantically clean. See
+5. **Section-aware chunking with breadcrumbs**. The chunker splits on
+   Markdown headings (`#`, `##`, `###`) so every chunk is one coherent
+   section. Each chunk is prefixed with its path —
+   `Article title > Section > Subsection` — so the embedding knows the
+   context. Sections bigger than 1500 chars fall back to paragraph/sentence
+   splitting, with the breadcrumb still on every sub-chunk. Code blocks
+   are skipped so a `# bash comment` is not mistaken for a heading. See
    [`backend/src/utils/chunker.js`](backend/src/utils/chunker.js).
+
+6. **`/smart` composes everything**. The single endpoint the UI calls:
+   keyword on articles, vector on chunks, RRF to fuse, Voyage rerank-2 to
+   finish. The user sees one search box; MongoDB does the rest. See
+   [`backend/src/routes/search.js`](backend/src/routes/search.js).
 
 ---
 
 ## 🧪 Try these queries
 
-The seed loads articles about Atlas Search, Vector Search, chunking, RRF,
-and Voyage. Watch how the three modes diverge:
+### In the UI
 
-| Query | Keyword wins | Semantic wins | Hybrid wins |
-|---|---|---|---|
-| `"$vectorSearch"` | ✓ exact token | | |
-| `"how do I combine results from two rankers"` | | ✓ RRF article | |
-| `"chunk size"` | ✓ (term hits) | ✓ (concept) | ✓ (best) |
-| `"why not pinecone"` | | ✓ ("Why store embeddings in MongoDB") | |
+Open the search box and type:
+
+- `How do I chunk by markdown section?` — returns the section
+  *“Designing a chunking strategy for RAG > Semantic chunking by section”*
+  as the top passage. Notice the breadcrumb path in the result.
+- `Why not just sum the scores from two rankers?` — returns the RRF
+  article's *“Why not just sum the scores?”* section.
+- `What input_type do I use for the user's query?` — returns
+  *“Voyage AI embeddings overview > The input_type parameter”*.
+
+### Comparing the underlying pipelines via curl (for the article)
+
+Same query, four pipelines, to show what each contributes:
+
+```bash
+WS=<workspace-id>
+Q='how do I chunk by markdown section'
+
+# 1. Pure keyword — Atlas Search BM25 + fuzzy
+curl -sX POST localhost:4010/api/search/keyword  -H 'content-type: application/json' \
+     -d "{\"query\":\"$Q\",\"workspaceId\":\"$WS\"}"  | jq '.results[0:3]'
+
+# 2. Pure semantic — Atlas Vector Search on chunks
+curl -sX POST localhost:4010/api/search/semantic -H 'content-type: application/json' \
+     -d "{\"query\":\"$Q\",\"workspaceId\":\"$WS\"}"  | jq '.results[0:3]'
+
+# 3. Hybrid — RRF combines them at the article level
+curl -sX POST localhost:4010/api/search/hybrid   -H 'content-type: application/json' \
+     -d "{\"query\":\"$Q\",\"workspaceId\":\"$WS\"}"  | jq '.results[0:3]'
+
+# 4. What the UI actually does — hybrid at chunk level + Voyage rerank
+curl -sX POST localhost:4010/api/search/smart    -H 'content-type: application/json' \
+     -d "{\"query\":\"$Q\",\"workspaceId\":\"$WS\"}"  | jq '.results[0:3]'
+```
 
 ---
 

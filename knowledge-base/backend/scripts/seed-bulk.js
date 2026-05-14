@@ -193,7 +193,8 @@ async function main() {
   console.log(`\n→ chunking ${insertedArticles.length} articles`);
   const chunks = [];
   for (const art of insertedArticles) {
-    const pieces = chunkText(`${art.title}\n\n${art.content}`);
+    // Title as H1 so it becomes the breadcrumb root in every chunk.
+    const pieces = chunkText(`# ${art.title}\n\n${art.content}`);
     pieces.forEach((text, idx) => {
       chunks.push({
         articleId: art._id,

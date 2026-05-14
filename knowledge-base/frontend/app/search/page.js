@@ -2,44 +2,49 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { api } from "../../lib/api";
 import { resolveWorkspaceId } from "../../lib/workspace";
 
-const MODES = [
-  { id: "keyword", label: "Keyword", hint: "Atlas Search ($search)" },
-  { id: "semantic", label: "Semantic", hint: "Atlas Vector Search ($vectorSearch)" },
-  { id: "hybrid", label: "Hybrid", hint: "Reciprocal Rank Fusion" },
+const EXAMPLES = [
+  "How do I chunk documents by markdown section?",
+  "When should I use keyword vs vector search?",
+  "Why not just sum the scores from two rankers?",
+  "What input_type do I use for the user's query?",
 ];
 
 export default function SearchPage() {
+  const params = useSearchParams();
+  const initialQ = params.get("q") || "";
+
   const [workspaceId, setWorkspaceId] = useState(null);
-  const [mode, setMode] = useState("hybrid");
-  const [query, setQuery] = useState("");
-  const [withRerank, setWithRerank] = useState(false);
+  const [query, setQuery] = useState(initialQ);
   const [results, setResults] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    resolveWorkspaceId().then(setWorkspaceId);
+    resolveWorkspaceId().then((wsId) => {
+      setWorkspaceId(wsId);
+      // If we arrived with ?q=..., run that search automatically.
+      if (initialQ && wsId) {
+        runSearchInternal(initialQ, wsId);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSearch(e) {
-    e?.preventDefault();
-    if (!query.trim()) return;
+  async function runSearchInternal(q, wsId) {
+    setQuery(q);
     setLoading(true);
     setError(null);
     setResults([]);
+    setMeta(null);
     try {
-      let res;
-      const body = { query, workspaceId };
-      if (mode === "keyword") res = await api.searchKeyword(body);
-      else if (mode === "semantic")
-        res = await api.searchSemantic({ ...body, withRerank });
-      else res = await api.searchHybrid(body);
+      const res = await api.smartSearch({ query: q, workspaceId: wsId, limit: 8 });
       setResults(res.results);
-      setMeta({ type: res.type, count: res.results.length });
+      setMeta({ count: res.results.length });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -47,121 +52,117 @@ export default function SearchPage() {
     }
   }
 
+  async function runSearch(q) {
+    const text = (q ?? query).trim();
+    if (!text) return;
+    await runSearchInternal(text, workspaceId);
+  }
+
   return (
     <div>
-      <h1>Search</h1>
+      <h1>Search the knowledge base</h1>
       <p className="muted">
-        Try the same query across three retrieval strategies. All three hit
-        MongoDB Atlas — no separate search engine, no separate vector store.
+        Ask anything. The backend runs hybrid retrieval (keyword + vector)
+        and reranks the passages with Voyage AI before returning them.
       </p>
 
-      <div className="search-modes">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            className={mode === m.id ? "active" : ""}
-            onClick={() => setMode(m.id)}
-            title={m.hint}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-      <p className="muted small" style={{ marginTop: "-0.5rem" }}>
-        {MODES.find((m) => m.id === mode).hint}
-      </p>
-
-      <form onSubmit={handleSearch}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          runSearch();
+        }}
+      >
         <div className="row" style={{ marginTop: "1rem" }}>
           <input
-            placeholder="e.g. how do I combine keyword and vector search?"
+            placeholder="e.g. how do I chunk by section?"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            style={{ flex: 1, minWidth: 300 }}
+            autoFocus
+            style={{ flex: 1, minWidth: 300, fontSize: "1.05rem" }}
           />
-          <button type="submit" disabled={loading}>
+          <button type="submit" disabled={loading || !workspaceId}>
             {loading && <span className="spinner" />}
             Search
           </button>
         </div>
-        {mode === "semantic" && (
-          <label className="row small muted" style={{ marginTop: 8 }}>
-            <input
-              type="checkbox"
-              checked={withRerank}
-              onChange={(e) => setWithRerank(e.target.checked)}
-              style={{ width: "auto" }}
-            />
-            <span>Rerank top results with Voyage rerank-2</span>
-          </label>
-        )}
       </form>
 
-      {error && <div className="error" style={{ marginTop: "1rem" }}>{error}</div>}
+      {!loading && results.length === 0 && !error && (
+        <div className="card" style={{ marginTop: "1rem" }}>
+          <p className="muted small" style={{ margin: 0, marginBottom: 8 }}>
+            Try:
+          </p>
+          <div className="row">
+            {EXAMPLES.map((ex) => (
+              <button
+                key={ex}
+                className="ghost"
+                onClick={() => runSearch(ex)}
+                style={{ fontSize: 13 }}
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="error" style={{ marginTop: "1rem" }}>
+          {error}
+        </div>
+      )}
 
       {meta && (
         <p className="muted small" style={{ marginTop: "1rem" }}>
-          {meta.count} result(s) · type=<code className="mono">{meta.type}</code>
+          {meta.count} passage{meta.count === 1 ? "" : "s"} ·{" "}
+          <span className="mono">hybrid + rerank</span>
         </p>
       )}
 
-      <div className="card" style={{ marginTop: ".5rem" }}>
-        {results.length === 0 && !loading && (
-          <p className="muted">
-            No results yet. Try{" "}
-            <em>“how should I chunk documents for RAG?”</em> or{" "}
-            <em>“atlas vector search”</em>.
-          </p>
-        )}
-        {results.map((r) => (
-          <div key={r._id} className="result-item">
+      <div style={{ marginTop: ".5rem" }}>
+        {results.map((r, i) => (
+          <article key={r._id} className="card">
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <Link href={`/articles/${r._id}`}>
-                <span className="result-title">{r.title}</span>
+              <Link href={`/articles/${r.articleId}`}>
+                <strong style={{ fontSize: "1.05rem" }}>{r.title}</strong>
               </Link>
-              <span className="result-score">
-                {r.rrfScore !== undefined && `rrf=${r.rrfScore.toFixed(4)}`}
-                {r.rerankScore !== undefined &&
-                  ` rerank=${r.rerankScore.toFixed(3)}`}
-                {r.score !== undefined &&
-                  r.rrfScore === undefined &&
-                  ` score=${r.score.toFixed(3)}`}
+              <span className="result-score" title="Voyage rerank-2 relevance score">
+                #{i + 1} · {(r.rerankScore ?? 0).toFixed(3)}
               </span>
             </div>
+
             {r.summary && (
-              <p className="muted small" style={{ margin: "0.25rem 0" }}>
+              <p className="muted small" style={{ margin: "0.4rem 0 0" }}>
                 {r.summary}
               </p>
             )}
-            {r.bestChunk && (
-              <p className="small" style={{ margin: "0.4rem 0" }}>
-                <em>{r.bestChunk.slice(0, 280)}…</em>
-              </p>
-            )}
-            {r.highlights && r.highlights.length > 0 && (
-              <div className="small">
-                {r.highlights.slice(0, 2).map((h, i) => (
-                  <div key={i} style={{ marginTop: 4 }}>
-                    {h.texts.map((t, j) =>
-                      t.type === "hit" ? (
-                        <mark key={j}>{t.value}</mark>
-                      ) : (
-                        <span key={j}>{t.value}</span>
-                      ),
-                    )}
-                  </div>
+
+            <pre
+              className="content"
+              style={{
+                marginTop: "0.6rem",
+                marginBottom: "0.4rem",
+                fontSize: 13.5,
+              }}
+            >
+              {r.text}
+            </pre>
+
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <div>
+                {(r.tags || []).slice(0, 6).map((t) => (
+                  <span key={t} className="tag">
+                    {t}
+                  </span>
                 ))}
               </div>
-            )}
-            <div style={{ marginTop: 6 }}>
-              {(r.tags || []).slice(0, 6).map((t) => (
-                <span key={t} className="tag">
-                  {t}
-                </span>
-              ))}
+              <span className="small muted">
+                chunk #{r.chunkIndex}
+                {r.kwMatch ? " · keyword + vector match" : " · vector match"}
+              </span>
             </div>
-          </div>
+          </article>
         ))}
       </div>
     </div>

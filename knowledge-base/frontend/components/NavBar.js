@@ -7,7 +7,6 @@ const ITEMS = [
   { href: "/", label: "Home" },
   { href: "/articles", label: "Articles" },
   { href: "/search", label: "Search" },
-  { href: "/ask", label: "Ask AI" },
 ];
 
 export function NavBar() {

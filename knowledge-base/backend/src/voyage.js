@@ -1,13 +1,30 @@
 /**
- * Minimal Voyage AI client.
+ * Minimal Voyage AI client — defaults to the MongoDB-managed gateway.
  *
- * We deliberately use fetch directly instead of an SDK so the article reader
- * can see exactly which HTTP calls are made.
+ * MongoDB acquired Voyage AI and now exposes the same embedding + rerank
+ * models behind a managed endpoint:
  *
- * Docs: https://docs.voyageai.com
+ *   POST https://ai.mongodb.com/v1/embeddings
+ *   POST https://ai.mongodb.com/v1/rerank
+ *
+ * Auth uses a "Model API Key" (prefix `al-`) created in
+ * Atlas → Organization → Access Manager → Model API Keys.
+ *
+ * Want the legacy direct Voyage endpoint instead? Set
+ *   VOYAGE_BASE_URL=https://api.voyageai.com/v1
+ * in your .env and use a `pa-` prefixed key from https://dash.voyageai.com.
+ *
+ * We use fetch directly (no SDK) so the article reader can see exactly
+ * which HTTP calls are made.
+ *
+ * Docs: https://www.mongodb.com/docs/voyageai/api-reference/overview/
  */
 
-const VOYAGE_BASE = "https://api.voyageai.com/v1";
+const DEFAULT_BASE = "https://ai.mongodb.com/v1";
+
+function baseUrl() {
+  return process.env.VOYAGE_BASE_URL || DEFAULT_BASE;
+}
 
 function getKey() {
   const key = process.env.VOYAGE_API_KEY;
@@ -16,16 +33,39 @@ function getKey() {
 }
 
 /**
+ * Wraps a non-2xx response with a helpful diagnostic instead of the raw body.
+ */
+async function explainError(res, label) {
+  const body = await res.text();
+  const hints = [];
+  if (res.status === 401) {
+    hints.push("API key was not recognised by the gateway.");
+    hints.push("Generate a Model API Key in Atlas → Access Manager → Model API Keys.");
+  } else if (res.status === 403) {
+    hints.push("Key recognised but not authorised. Check billing / payment method on the Atlas org.");
+    hints.push("Or: key belongs to a different org/project than the requested model.");
+  } else if (res.status === 429) {
+    hints.push("Rate-limited (TPM or RPM). Lower --concurrency or retry with backoff.");
+  } else if (res.status === 400) {
+    hints.push("Bad request — model name? input too long? Check VOYAGE_EMBEDDING_MODEL.");
+  }
+  const tail = hints.length ? `\n  hint: ${hints.join("\n  hint: ")}` : "";
+  return new Error(
+    `${label} failed (${res.status} ${res.statusText}) @ ${baseUrl()}\n  body: ${body}${tail}`,
+  );
+}
+
+/**
  * Generates embeddings for one or many texts.
  * @param {string|string[]} input  Single text or batch of texts.
- * @param {"document"|"query"} inputType  Voyage distinguishes document vs query embeddings.
+ * @param {"document"|"query"} inputType  Document vs query embeddings.
  * @returns {Promise<number[][]>}  One vector per input.
  */
 export async function embed(input, inputType = "document") {
   const model = process.env.VOYAGE_EMBEDDING_MODEL || "voyage-3";
   const texts = Array.isArray(input) ? input : [input];
 
-  const res = await fetch(`${VOYAGE_BASE}/embeddings`, {
+  const res = await fetch(`${baseUrl()}/embeddings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -38,10 +78,7 @@ export async function embed(input, inputType = "document") {
     }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Voyage embed failed (${res.status}): ${text}`);
-  }
+  if (!res.ok) throw await explainError(res, "embed");
 
   const json = await res.json();
   return json.data.map((d) => d.embedding);
@@ -62,7 +99,7 @@ export async function rerank(query, documents, topK = 5) {
 
   const model = process.env.VOYAGE_RERANK_MODEL || "rerank-2";
 
-  const res = await fetch(`${VOYAGE_BASE}/rerank`, {
+  const res = await fetch(`${baseUrl()}/rerank`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -77,10 +114,7 @@ export async function rerank(query, documents, topK = 5) {
     }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Voyage rerank failed (${res.status}): ${text}`);
-  }
+  if (!res.ok) throw await explainError(res, "rerank");
 
   const json = await res.json();
   return json.data;

@@ -452,7 +452,165 @@ router.post("/ask", async (req, res, next) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 5. Search history                                                          */
+/* 5. Smart search — what the UI actually calls                               */
+/* -------------------------------------------------------------------------- */
+/**
+ * The single endpoint a real knowledge-base UI should call. Composes:
+ *
+ *   1. Keyword search on articles (Atlas Search) → expand to all their chunks
+ *   2. Vector search on chunks (Atlas Vector Search)
+ *   3. RRF fuse the two ranked lists of CHUNK ids
+ *   4. Rerank the fused top-N chunks with Voyage rerank-2
+ *   5. Return the top results enriched with article metadata
+ *
+ * The user never sees this pipeline — they just type and get answers.
+ * The /keyword, /semantic, /hybrid and /ask endpoints remain for the
+ * article (and curl demos) to expose what is happening internally.
+ */
+router.post("/smart", async (req, res, next) => {
+  try {
+    const { query, workspaceId, limit = 10, userId, k = 60 } = req.body;
+    if (!query) return res.status(400).json({ error: "query is required" });
+
+    const db = getDB();
+    const wsId = workspaceId ? new ObjectId(workspaceId) : null;
+
+    // ── 1 & 2: keyword on ARTICLES and semantic on CHUNKS, in parallel ─────
+    const [qVector] = await embed(query, "query");
+
+    const [keywordArticles, semanticChunks] = await Promise.all([
+      // Keyword search returns ranked article ids — we DO NOT expand to all
+      // their chunks (that would pollute the fusion with off-topic chunks
+      // from articles that happened to match in keyword).
+      db.collection(Collections.articles)
+        .aggregate([
+          {
+            $search: {
+              index: ATLAS_SEARCH_INDEX,
+              compound: {
+                should: [
+                  { text: { query, path: "title", score: { boost: { value: 3 } } } },
+                  { text: { query, path: "content" } },
+                  { text: { query, path: "tags", score: { boost: { value: 2 } } } },
+                ],
+              },
+            },
+          },
+          ...(wsId ? [{ $match: { workspaceId: wsId } }] : []),
+          { $limit: 30 },
+          { $project: { _id: 1 } },
+        ])
+        .toArray(),
+
+      // Semantic search at chunk level — this is the meat of the result.
+      db.collection(Collections.chunks)
+        .aggregate([
+          {
+            $vectorSearch: {
+              index: ATLAS_VECTOR_INDEX,
+              path: "embedding",
+              queryVector: qVector,
+              numCandidates: 200,
+              limit: 50,
+              ...(wsId ? { filter: { workspaceId: wsId } } : {}),
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              articleId: 1,
+              chunkIndex: 1,
+              text: 1,
+              score: { $meta: "vectorSearchScore" },
+            },
+          },
+        ])
+        .toArray(),
+    ]);
+
+    if (semanticChunks.length === 0) {
+      await recordHistory({ userId, workspaceId, query, type: "smart", count: 0 });
+      return res.json({ query, results: [] });
+    }
+
+    // ── 3: RRF fuse — but anchored on CHUNKS, with keyword as a BOOST ───────
+    //
+    // For each semantic chunk, we add 1/(k+rank). If the chunk's parent
+    // article also appears in the keyword ranking, we add the keyword
+    // boost as well. This way keyword pulls related chunks UP without
+    // injecting unrelated chunks from keyword-matching articles.
+    const keywordArticleRank = new Map();
+    keywordArticles.forEach((art, idx) => {
+      keywordArticleRank.set(art._id.toString(), idx);
+    });
+
+    const fused = semanticChunks.map((chunk, idx) => {
+      let score = 1 / (k + idx + 1);
+      const kwRank = keywordArticleRank.get(chunk.articleId.toString());
+      if (kwRank !== undefined) {
+        score += 1 / (k + kwRank + 1);
+      }
+      return { ...chunk, rrfScore: score, kwMatch: kwRank !== undefined };
+    });
+
+    fused.sort((a, b) => b.rrfScore - a.rrfScore);
+    const top = fused.slice(0, 20);
+
+    // ── 4: hydrate with article metadata ───────────────────────────────────
+    const articleIds = [...new Set(top.map((c) => c.articleId.toString()))]
+      .map((id) => new ObjectId(id));
+    const articles = await db
+      .collection(Collections.articles)
+      .find({ _id: { $in: articleIds } })
+      .project({ title: 1, summary: 1, tags: 1, category: 1 })
+      .toArray();
+    const articleById = new Map(articles.map((a) => [a._id.toString(), a]));
+
+    const enriched = top
+      .map((c) => {
+        const art = articleById.get(c.articleId.toString());
+        return art
+          ? {
+              _id: c._id,
+              articleId: c.articleId,
+              chunkIndex: c.chunkIndex,
+              text: c.text,
+              title: art.title,
+              summary: art.summary,
+              tags: art.tags,
+              category: art.category,
+              rrfScore: c.rrfScore,
+              kwMatch: c.kwMatch,
+            }
+          : null;
+      })
+      .filter(Boolean);
+
+    // ── 5: Voyage rerank for the final ordering ─────────────────────────────
+    const passages = enriched.map((c) => `${c.title}\n${c.text}`);
+    const reranked = await rerank(query, passages, Math.min(limit, enriched.length));
+
+    const results = reranked.map((r) => ({
+      ...enriched[r.index],
+      rerankScore: r.relevance_score,
+    }));
+
+    await recordHistory({
+      userId,
+      workspaceId,
+      query,
+      type: "smart",
+      count: results.length,
+    });
+
+    res.json({ query, results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* 6. Search history                                                          */
 /* -------------------------------------------------------------------------- */
 router.get("/history", async (req, res, next) => {
   try {

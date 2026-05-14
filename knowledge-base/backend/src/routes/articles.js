@@ -17,7 +17,9 @@ async function indexArticleChunks(article) {
   // Replace any existing chunks for this article (simplifies re-indexing).
   await chunksCol.deleteMany({ articleId: article._id });
 
-  const corpus = `${article.title}\n\n${article.content}`;
+  // Prepend the title as an H1 so the markdown-aware chunker uses it as the
+  // breadcrumb root for every chunk:  "Title > Section > Subsection".
+  const corpus = `# ${article.title}\n\n${article.content}`;
   const pieces = chunkText(corpus);
 
   if (pieces.length === 0) return 0;

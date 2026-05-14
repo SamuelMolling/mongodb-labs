@@ -10,7 +10,26 @@ import search from "./routes/search.js";
 
 const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+/**
+ * CORS_ORIGIN can be:
+ *   - empty / "*"                → allow any origin (default)
+ *   - "localhost"                → allow any http://localhost:PORT, handy for dev
+ *     with multiple Next.js apps competing for ports
+ *   - "https://my.app,https://x" → comma-separated allow-list
+ *   - a single origin string     → matched exactly
+ */
+const corsRaw = (process.env.CORS_ORIGIN || "*").trim();
+const corsOrigin =
+  corsRaw === "*" || corsRaw === ""
+    ? "*"
+    : corsRaw === "localhost"
+    ? (origin, cb) => {
+        if (!origin) return cb(null, true); // curl, server-to-server
+        cb(null, /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+      }
+    : corsRaw.split(",").map((o) => o.trim());
+
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
@@ -28,7 +47,7 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-const port = Number(process.env.PORT) || 8080;
+const port = Number(process.env.PORT) || 4010;
 
 connectDB()
   .then(() => {

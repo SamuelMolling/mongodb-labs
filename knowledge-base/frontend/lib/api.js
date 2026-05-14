@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4010";
 
 async function request(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
@@ -33,6 +33,16 @@ export const api = {
 
   listWorkspaces: () => request("/api/workspaces"),
 
+  // The single endpoint the UI calls.
+  // Composes hybrid (kw + vec) + Voyage rerank server-side.
+  smartSearch: (body) =>
+    request("/api/search/smart", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // The endpoints below remain so the article can demo each pipeline
+  // independently. The user-facing UI does not call them.
   searchKeyword: (body) =>
     request("/api/search/keyword", {
       method: "POST",
