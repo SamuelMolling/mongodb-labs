@@ -4,6 +4,19 @@ let client;
 let db;
 
 /**
+ * `appName` lets MongoDB DevRel measure who actually runs the lab vs. who
+ * just reads the article. The driver appends this to every connection's
+ * client metadata and overrides any appName the user may have set in the
+ * connection string.
+ *
+ * Naming convention:  devrel-MEDIUM-PRIMARY-SECONDARY-OPTIONAL
+ *
+ * For this lab: an article about MongoDB Atlas Vector Search applied to a
+ * RAG knowledge base. PRIMARY=vectorsearch, SECONDARY=rag.
+ */
+const APP_NAME = process.env.APP_NAME || "devrel-article-vectorsearch-rag";
+
+/**
  * Connects to MongoDB Atlas and returns the Db instance.
  * Reuses the same client across calls (connection pool).
  */
@@ -18,8 +31,7 @@ export async function connectDB() {
   }
 
   client = new MongoClient(uri, {
-    // The Node driver uses a single connection pool per MongoClient.
-    // Tune as needed; defaults are sensible for a small lab project.
+    appName: APP_NAME, // overrides any appName in the URI; see comment above
     maxPoolSize: 20,
     serverSelectionTimeoutMS: 10_000,
   });
