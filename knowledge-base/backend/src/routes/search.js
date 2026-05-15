@@ -2,6 +2,7 @@ import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { Collections, getDB } from "../db.js";
 import { embed, rerank } from "../voyage.js";
+import { streamChat } from "../llm.js";
 
 const router = Router();
 
@@ -467,133 +468,136 @@ router.post("/ask", async (req, res, next) => {
  * The /keyword, /semantic, /hybrid and /ask endpoints remain for the
  * article (and curl demos) to expose what is happening internally.
  */
+/**
+ * The retrieval pipeline behind both /smart (returns JSON) and /chat
+ * (returns the same passages and then streams an LLM answer using them).
+ *
+ *   1. Keyword search on articles (Atlas Search) → ranked article ids
+ *   2. Vector search on chunks (Atlas Vector Search) → ranked chunk ids
+ *   3. RRF fuse — anchored on chunks; keyword adds a BOOST when the chunk's
+ *      parent article also matches in keyword. This avoids polluting the
+ *      ranking with every chunk from every keyword-matching article.
+ *   4. Hydrate with article metadata via $lookup
+ *   5. Voyage rerank-2 for the final ordering
+ */
+export async function smartRetrieve(query, workspaceId, limit = 10, k = 60) {
+  const db = getDB();
+  const wsId = workspaceId ? new ObjectId(workspaceId) : null;
+
+  const [qVector] = await embed(query, "query");
+
+  const [keywordArticles, semanticChunks] = await Promise.all([
+    db.collection(Collections.articles)
+      .aggregate([
+        {
+          $search: {
+            index: ATLAS_SEARCH_INDEX,
+            compound: {
+              should: [
+                { text: { query, path: "title", score: { boost: { value: 3 } } } },
+                { text: { query, path: "content" } },
+                { text: { query, path: "tags", score: { boost: { value: 2 } } } },
+              ],
+            },
+          },
+        },
+        ...(wsId ? [{ $match: { workspaceId: wsId } }] : []),
+        { $limit: 30 },
+        { $project: { _id: 1 } },
+      ])
+      .toArray(),
+
+    db.collection(Collections.chunks)
+      .aggregate([
+        {
+          $vectorSearch: {
+            index: ATLAS_VECTOR_INDEX,
+            path: "embedding",
+            queryVector: qVector,
+            numCandidates: 200,
+            limit: 50,
+            ...(wsId ? { filter: { workspaceId: wsId } } : {}),
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            articleId: 1,
+            chunkIndex: 1,
+            text: 1,
+            score: { $meta: "vectorSearchScore" },
+          },
+        },
+      ])
+      .toArray(),
+  ]);
+
+  if (semanticChunks.length === 0) return [];
+
+  // RRF fusion anchored on chunks, keyword as boost.
+  const keywordArticleRank = new Map();
+  keywordArticles.forEach((art, idx) =>
+    keywordArticleRank.set(art._id.toString(), idx),
+  );
+
+  const fused = semanticChunks
+    .map((chunk, idx) => {
+      let score = 1 / (k + idx + 1);
+      const kwRank = keywordArticleRank.get(chunk.articleId.toString());
+      if (kwRank !== undefined) score += 1 / (k + kwRank + 1);
+      return { ...chunk, rrfScore: score, kwMatch: kwRank !== undefined };
+    })
+    .sort((a, b) => b.rrfScore - a.rrfScore)
+    .slice(0, 20);
+
+  const articleIds = [...new Set(fused.map((c) => c.articleId.toString()))]
+    .map((id) => new ObjectId(id));
+
+  const articles = await db
+    .collection(Collections.articles)
+    .find({ _id: { $in: articleIds } })
+    .project({ title: 1, summary: 1, tags: 1, category: 1 })
+    .toArray();
+
+  const articleById = new Map(articles.map((a) => [a._id.toString(), a]));
+
+  const enriched = fused
+    .map((c) => {
+      const art = articleById.get(c.articleId.toString());
+      return art
+        ? {
+            _id: c._id,
+            articleId: c.articleId,
+            chunkIndex: c.chunkIndex,
+            text: c.text,
+            title: art.title,
+            summary: art.summary,
+            tags: art.tags,
+            category: art.category,
+            rrfScore: c.rrfScore,
+            kwMatch: c.kwMatch,
+          }
+        : null;
+    })
+    .filter(Boolean);
+
+  if (enriched.length === 0) return [];
+
+  const passages = enriched.map((c) => `${c.title}\n${c.text}`);
+  const reranked = await rerank(query, passages, Math.min(limit, enriched.length));
+
+  return reranked.map((r) => ({
+    ...enriched[r.index],
+    rerankScore: r.relevance_score,
+  }));
+}
+
 router.post("/smart", async (req, res, next) => {
   try {
     const { query, workspaceId, limit = 10, userId, k = 60 } = req.body;
     if (!query) return res.status(400).json({ error: "query is required" });
 
-    const db = getDB();
-    const wsId = workspaceId ? new ObjectId(workspaceId) : null;
-
-    // ── 1 & 2: keyword on ARTICLES and semantic on CHUNKS, in parallel ─────
-    const [qVector] = await embed(query, "query");
-
-    const [keywordArticles, semanticChunks] = await Promise.all([
-      // Keyword search returns ranked article ids — we DO NOT expand to all
-      // their chunks (that would pollute the fusion with off-topic chunks
-      // from articles that happened to match in keyword).
-      db.collection(Collections.articles)
-        .aggregate([
-          {
-            $search: {
-              index: ATLAS_SEARCH_INDEX,
-              compound: {
-                should: [
-                  { text: { query, path: "title", score: { boost: { value: 3 } } } },
-                  { text: { query, path: "content" } },
-                  { text: { query, path: "tags", score: { boost: { value: 2 } } } },
-                ],
-              },
-            },
-          },
-          ...(wsId ? [{ $match: { workspaceId: wsId } }] : []),
-          { $limit: 30 },
-          { $project: { _id: 1 } },
-        ])
-        .toArray(),
-
-      // Semantic search at chunk level — this is the meat of the result.
-      db.collection(Collections.chunks)
-        .aggregate([
-          {
-            $vectorSearch: {
-              index: ATLAS_VECTOR_INDEX,
-              path: "embedding",
-              queryVector: qVector,
-              numCandidates: 200,
-              limit: 50,
-              ...(wsId ? { filter: { workspaceId: wsId } } : {}),
-            },
-          },
-          {
-            $project: {
-              _id: 1,
-              articleId: 1,
-              chunkIndex: 1,
-              text: 1,
-              score: { $meta: "vectorSearchScore" },
-            },
-          },
-        ])
-        .toArray(),
-    ]);
-
-    if (semanticChunks.length === 0) {
-      await recordHistory({ userId, workspaceId, query, type: "smart", count: 0 });
-      return res.json({ query, results: [] });
-    }
-
-    // ── 3: RRF fuse — but anchored on CHUNKS, with keyword as a BOOST ───────
-    //
-    // For each semantic chunk, we add 1/(k+rank). If the chunk's parent
-    // article also appears in the keyword ranking, we add the keyword
-    // boost as well. This way keyword pulls related chunks UP without
-    // injecting unrelated chunks from keyword-matching articles.
-    const keywordArticleRank = new Map();
-    keywordArticles.forEach((art, idx) => {
-      keywordArticleRank.set(art._id.toString(), idx);
-    });
-
-    const fused = semanticChunks.map((chunk, idx) => {
-      let score = 1 / (k + idx + 1);
-      const kwRank = keywordArticleRank.get(chunk.articleId.toString());
-      if (kwRank !== undefined) {
-        score += 1 / (k + kwRank + 1);
-      }
-      return { ...chunk, rrfScore: score, kwMatch: kwRank !== undefined };
-    });
-
-    fused.sort((a, b) => b.rrfScore - a.rrfScore);
-    const top = fused.slice(0, 20);
-
-    // ── 4: hydrate with article metadata ───────────────────────────────────
-    const articleIds = [...new Set(top.map((c) => c.articleId.toString()))]
-      .map((id) => new ObjectId(id));
-    const articles = await db
-      .collection(Collections.articles)
-      .find({ _id: { $in: articleIds } })
-      .project({ title: 1, summary: 1, tags: 1, category: 1 })
-      .toArray();
-    const articleById = new Map(articles.map((a) => [a._id.toString(), a]));
-
-    const enriched = top
-      .map((c) => {
-        const art = articleById.get(c.articleId.toString());
-        return art
-          ? {
-              _id: c._id,
-              articleId: c.articleId,
-              chunkIndex: c.chunkIndex,
-              text: c.text,
-              title: art.title,
-              summary: art.summary,
-              tags: art.tags,
-              category: art.category,
-              rrfScore: c.rrfScore,
-              kwMatch: c.kwMatch,
-            }
-          : null;
-      })
-      .filter(Boolean);
-
-    // ── 5: Voyage rerank for the final ordering ─────────────────────────────
-    const passages = enriched.map((c) => `${c.title}\n${c.text}`);
-    const reranked = await rerank(query, passages, Math.min(limit, enriched.length));
-
-    const results = reranked.map((r) => ({
-      ...enriched[r.index],
-      rerankScore: r.relevance_score,
-    }));
+    const results = await smartRetrieve(query, workspaceId, limit, k);
 
     await recordHistory({
       userId,
@@ -606,6 +610,94 @@ router.post("/smart", async (req, res, next) => {
     res.json({ query, results });
   } catch (err) {
     next(err);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* 6. Chat — RAG with streaming LLM answer                                    */
+/* -------------------------------------------------------------------------- */
+/**
+ * The full RAG experience. Same retrieval as /smart, then plugs the top
+ * passages into an LLM (OpenAI by default) and streams the answer back.
+ *
+ * Protocol: NDJSON (newline-delimited JSON) so the frontend can parse it
+ * with a simple fetch + ReadableStream. Three event kinds:
+ *
+ *   {"event":"passages","passages":[...]}     // fired once, up front
+ *   {"event":"token","text":"...chunk..."}    // fired N times
+ *   {"event":"done","model":"gpt-4o-mini"}    // fired once, at the end
+ *   {"event":"error","message":"..."}         // only if something failed mid-stream
+ */
+router.post("/chat", async (req, res, next) => {
+  const { question, workspaceId, limit = 5, userId, k = 60 } = req.body;
+  if (!question) return res.status(400).json({ error: "question is required" });
+
+  let streamStarted = false;
+
+  try {
+    const passages = await smartRetrieve(question, workspaceId, limit, k);
+
+    // Open NDJSON stream.
+    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // disable proxy buffering if behind nginx
+    res.flushHeaders?.();
+    streamStarted = true;
+
+    const send = (event, data) => {
+      res.write(JSON.stringify({ event, ...data }) + "\n");
+    };
+
+    send("passages", { passages });
+
+    if (passages.length === 0) {
+      send("token", {
+        text:
+          "I could not find any passages in the knowledge base that match your question. " +
+          "Try rephrasing it or seeding more content.",
+      });
+      send("done", { model: null });
+      await recordHistory({ userId, workspaceId, query: question, type: "chat", count: 0 });
+      return res.end();
+    }
+
+    const context = passages
+      .map((p, i) => `[${i + 1}] ${p.title}\n${p.text}`)
+      .join("\n\n---\n\n");
+
+    const system = [
+      "You are a helpful assistant answering questions using ONLY the passages",
+      "provided below. Cite the passages you used as bracketed numbers like [1] or [2].",
+      "If the passages do not contain enough information to answer, say so honestly.",
+      "Reply in the same language as the user's question.",
+      "Be concise: 2 to 5 sentences unless the user asks for detail.",
+    ].join(" ");
+
+    const userPrompt = `Passages:\n\n${context}\n\nQuestion: ${question}`;
+
+    const { model } = await streamChat({
+      system,
+      user: userPrompt,
+      onToken: (text) => send("token", { text }),
+    });
+
+    send("done", { model });
+    res.end();
+
+    await recordHistory({
+      userId,
+      workspaceId,
+      query: question,
+      type: "chat",
+      count: passages.length,
+    });
+  } catch (err) {
+    if (!streamStarted) return next(err);
+    try {
+      res.write(JSON.stringify({ event: "error", message: err.message }) + "\n");
+    } catch {}
+    res.end();
   }
 });
 

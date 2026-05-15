@@ -33,13 +33,66 @@ export const api = {
 
   listWorkspaces: () => request("/api/workspaces"),
 
-  // The single endpoint the UI calls.
-  // Composes hybrid (kw + vec) + Voyage rerank server-side.
+  // Smart search returns passages as a single JSON response.
   smartSearch: (body) =>
     request("/api/search/smart", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // RAG with a streaming LLM answer. Calls /api/search/chat, which retrieves
+  // passages and then streams an LLM answer back as NDJSON events.
+  //
+  // Usage:
+  //   await api.chatStream({ question, workspaceId, limit }, {
+  //     onPassages: (p)     => ...,
+  //     onToken:    (text)  => ...,
+  //     onDone:     (info)  => ...,
+  //     onError:    (msg)   => ...,
+  //     signal:     ac.signal,   // optional AbortController.signal
+  //   });
+  chatStream: async (body, handlers = {}) => {
+    const res = await fetch(`${API}/api/search/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: handlers.signal,
+    });
+
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`;
+      try {
+        const j = await res.json();
+        if (j?.error) msg = j.error;
+      } catch {}
+      throw new Error(msg);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let evt;
+        try {
+          evt = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (evt.event === "passages") handlers.onPassages?.(evt.passages);
+        else if (evt.event === "token") handlers.onToken?.(evt.text);
+        else if (evt.event === "done") handlers.onDone?.(evt);
+        else if (evt.event === "error") handlers.onError?.(evt.message);
+      }
+    }
+  },
 
   // The endpoints below remain so the article can demo each pipeline
   // independently. The user-facing UI does not call them.

@@ -12,15 +12,19 @@ small so the MongoDB pieces are visible. It is not production-ready.
 
 ## 🎯 What this lab demonstrates
 
-The UI is one search box. Behind it, four MongoDB-powered stages compose
-into a single retrieval pipeline (`/api/search/smart`):
+The UI is one search box. Behind it, **five stages** compose into a single
+streaming RAG pipeline (`/api/search/chat`):
 
-| Stage | MongoDB feature | Purpose |
+| Stage | Tech | Purpose |
 |---|---|---|
 | Keyword | **Atlas Search** (`$search`) | rank articles by BM25 + fuzzy term match |
 | Semantic | **Atlas Vector Search** (`$vectorSearch`) | rank chunks by embedding similarity |
 | Fusion | aggregation pipeline | **Reciprocal Rank Fusion** combines both rankings |
 | Rerank | **Voyage rerank-2** via `ai.mongodb.com` | final precision pass on the top passages |
+| Answer | **OpenAI** (`gpt-4o-mini` default) | LLM generates a cited answer, streamed token by token |
+
+Four of the five stages are MongoDB-native. The LLM is the only piece
+outside Atlas — and it consumes context retrieved entirely from MongoDB.
 
 Plus the foundations a real knowledge base needs:
 
@@ -31,9 +35,9 @@ Plus the foundations a real knowledge base needs:
 | Chunking by Markdown section with breadcrumbs | section-aware splitter |
 | Search analytics | `search_history` collection |
 
-The endpoints `/api/search/keyword`, `/semantic`, `/hybrid` and `/ask`
-remain exposed so the article can demonstrate each stage independently
-via curl — the UI does not call them.
+The endpoints `/api/search/smart` (retrieval-only JSON) and
+`/api/search/{keyword,semantic,hybrid,ask}` remain exposed so the article
+can demonstrate each stage independently via curl — the UI calls `/chat`.
 
 > The point of the lab: you can build a full “AI search platform” without
 > Elasticsearch, Pinecone, Weaviate, or any other extra component. MongoDB
@@ -124,10 +128,12 @@ knowledge-base/
 
 - **Node.js 20+**
 - **MongoDB Atlas** cluster on a tier that supports Atlas Search + Vector
-  Search (M10 free of charge for development is enough, but the shared free
-  tier also supports both today).
-- A **[Voyage AI](https://www.voyageai.com/)** API key (free trial credits
-  available).
+  Search (the shared free tier supports both today).
+- An **Atlas Model API Key** (`al-...`) for Voyage embeddings + rerank, or
+  a Voyage `pa-...` key if you'd rather call Voyage directly.
+- An **[OpenAI API key](https://platform.openai.com/api-keys)** for the
+  `/chat` endpoint. The default model is `gpt-4o-mini` (cheap, fast). Set
+  `OPENAI_API_KEY` and `LLM_MODEL` in `backend/.env`.
 
 ### Quick start with `make` (recommended)
 
@@ -350,7 +356,8 @@ should always pre-filter by tenant id this way.
 | GET | `/api/articles/:id` | | |
 | PUT | `/api/articles/:id` | `{ title?, content?, tags?, ... }` | Re-indexes if title/content changed |
 | DELETE | `/api/articles/:id` | | Also deletes chunks |
-| POST | `/api/search/smart` | `{ query, workspaceId, limit }` | **What the UI calls.** Hybrid + Voyage rerank |
+| POST | `/api/search/chat` | `{ question, workspaceId, limit }` | **What the UI calls.** Hybrid + rerank + streaming LLM answer (NDJSON) |
+| POST | `/api/search/smart` | `{ query, workspaceId, limit }` | Hybrid + rerank as a single JSON response (no LLM) |
 | POST | `/api/search/keyword` | `{ query, workspaceId, limit }` | Atlas Search alone (educational) |
 | POST | `/api/search/semantic` | `{ query, workspaceId, limit, withRerank }` | Vector Search alone (educational) |
 | POST | `/api/search/hybrid` | `{ query, workspaceId, limit, k }` | RRF without rerank (educational) |
@@ -419,9 +426,17 @@ curl -X POST http://localhost:4010/api/search/ask \
    are skipped so a `# bash comment` is not mistaken for a heading. See
    [`backend/src/utils/chunker.js`](backend/src/utils/chunker.js).
 
-6. **`/smart` composes everything**. The single endpoint the UI calls:
-   keyword on articles, vector on chunks, RRF to fuse, Voyage rerank-2 to
-   finish. The user sees one search box; MongoDB does the rest. See
+6. **`/smart` composes the retrieval pipeline**. Keyword on articles,
+   vector on chunks, RRF to fuse, Voyage rerank-2 to finish. Used as the
+   building block for `/chat`. See `smartRetrieve` in
+   [`backend/src/routes/search.js`](backend/src/routes/search.js).
+
+7. **`/chat` is RAG end-to-end, streamed**. Same retrieval, then feeds the
+   top passages into OpenAI as context with instructions to cite passages
+   by number (`[1]`, `[2]`...). The frontend parses NDJSON events
+   (`passages`, `token`, `done`, `error`) and types out the answer as
+   tokens arrive. See `streamChat` in
+   [`backend/src/llm.js`](backend/src/llm.js) and the route in
    [`backend/src/routes/search.js`](backend/src/routes/search.js).
 
 ---

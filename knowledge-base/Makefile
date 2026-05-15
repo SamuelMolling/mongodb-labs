@@ -1,5 +1,5 @@
-.PHONY: help install setup setup-bulk indexes seed seed-bulk \
-        dev dev-backend dev-frontend stop clean check-env \
+.PHONY: help install setup setup-bulk indexes seed seed-bulk seed-bulk-noembed \
+        dev dev-backend dev-frontend stop health clean check-env \
         backend-install frontend-install
 
 # ---------------------------------------------------------------------------
