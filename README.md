@@ -16,6 +16,16 @@ This repository is an **experimentation and learning space** for testing MongoDB
 
 Each directory in this repository contains an independent project or experiment focused on exploring specific MongoDB concepts and features.
 
+| Lab | Stack | What it explores |
+|---|---|---|
+| [`knowledge-base`](knowledge-base/) | Node.js · Next.js | AI search platform — Atlas Search + Vector Search, RRF hybrid ranking, Voyage rerank, streaming RAG answers |
+| [`support-chatbot`](support-chatbot/) | Node.js · Next.js | Context-aware support agent — query condensation, tiered conversation memory, two retrieval corpora, entitlement via `$vectorSearch` filters, escalation policy |
+| [`csfle`](csfle/) | Go | Client-Side Field Level Encryption with a local master key |
+| [`csfle-py`](csfle-py/) | Python | Client-Side Field Level Encryption, Python driver |
+| [`queryable-encryption`](queryable-encryption/) | Go · Python | Queryable Encryption — searching encrypted fields without decrypting them |
+| [`todo-crud-api`](todo-crud-api/) | Go | CRUD API fundamentals, layered architecture, query logging |
+| [`terraform`](terraform/) | Terraform | Atlas resource policies as infrastructure-as-code |
+
 ## 🚀 How to Use
 
 Navigate to any project directory to find its specific README with detailed instructions:
