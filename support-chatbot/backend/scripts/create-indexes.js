@@ -21,9 +21,37 @@ const ATLAS_SEARCH_INDEX = process.env.ATLAS_SEARCH_INDEX || "kb_articles_search
 const ATLAS_VECTOR_INDEX = process.env.ATLAS_VECTOR_INDEX || "kb_chunks_vector";
 const ATLAS_TICKETS_INDEX = process.env.ATLAS_TICKETS_INDEX || "tickets_vector";
 
-// voyage-3 → 1024 dims; cosine is the recommended metric.
+// voyage-3.5 → 1024 dims; cosine is the recommended metric.
 const EMBEDDING_DIMENSIONS = 1024;
 const VECTOR_SIMILARITY = "cosine";
+
+/**
+ * Creates every collection up front.
+ *
+ * `createIndexes` creates a missing collection implicitly; `createSearchIndex`
+ * does not, and fails with NamespaceNotFound instead. On a fresh cluster the
+ * search-index step therefore runs against collections nothing has written to
+ * yet, which is exactly the state a first-time reader of this lab is in.
+ */
+async function ensureCollections(db) {
+  console.log("\n→ ensuring collections exist");
+
+  const existing = new Set(
+    (await db.listCollections({}, { nameOnly: true }).toArray()).map((c) => c.name),
+  );
+
+  for (const name of Object.values(Collections)) {
+    if (existing.has(name)) continue;
+    try {
+      await db.createCollection(name);
+    } catch (err) {
+      // Racing with another run, or created between the list and the call.
+      if (err.codeName !== "NamespaceExists") throw err;
+    }
+  }
+
+  console.log(`  ✓ ${Object.values(Collections).length} collections ready`);
+}
 
 async function createRegularIndexes(db) {
   console.log("\n→ creating regular indexes");
@@ -105,11 +133,19 @@ async function createAtlasSearchIndex(db) {
         fields: {
           title: { type: "string", analyzer: "lucene.english" },
           content: { type: "string", analyzer: "lucene.english" },
+          // `tags` stays an analysed string: it is scored in compound.should,
+          // not filtered on.
           tags: { type: "string", analyzer: "lucene.keyword" },
           category: { type: "string", analyzer: "lucene.keyword" },
-          audience: { type: "string", analyzer: "lucene.keyword" },
-          locale: { type: "string", analyzer: "lucene.keyword" },
-          status: { type: "string", analyzer: "lucene.keyword" },
+
+          // These three are FILTERED, never scored, so they are indexed as
+          // `token`. The `in` and `equals` operators do not match an analysed
+          // string field -- they return zero hits and no error, which turns
+          // the whole keyword ranker off without anything in the logs saying
+          // so. `token` is the type those operators are built for.
+          audience: { type: "token" },
+          locale: { type: "token" },
+          status: { type: "token" },
         },
       },
     },
@@ -192,9 +228,12 @@ async function safeCreateSearchIndex(collection, definition) {
   try {
     await collection.createSearchIndex(definition);
   } catch (err) {
-    // The driver throws if the index already exists — fine, that's idempotent.
     if (err.codeName === "IndexAlreadyExists" || /already exists/i.test(err.message)) {
-      console.log(`  ⚠ index "${definition.name}" already exists, skipping`);
+      // Update rather than skip. Skipping makes the script silently
+      // non-idempotent: a changed mapping never reaches a cluster that ran an
+      // earlier version, and the mismatch only shows up as bad results.
+      console.log(`  ⚠ index "${definition.name}" exists, updating definition`);
+      await collection.updateSearchIndex(definition.name, definition.definition);
       return;
     }
     throw err;
@@ -203,6 +242,7 @@ async function safeCreateSearchIndex(collection, definition) {
 
 async function main() {
   const db = await connectDB();
+  await ensureCollections(db);
   await createRegularIndexes(db);
   await createAtlasSearchIndex(db);
   await createVectorIndex(db);

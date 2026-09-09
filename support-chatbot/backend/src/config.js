@@ -55,9 +55,17 @@ export const tuning = {
   // Bands over the TOP rerank score. Below `weak` we have retrieved nothing
   // worth answering from, and the honest move is to say so rather than let
   // the model improvise from parametric knowledge.
+  // Calibrated against the seeded corpus, not guessed. Observed rerank-2
+  // scores: a passage that actually answers the question lands 0.79-0.88;
+  // a tangential one lands ~0.56; a wrong retrieval on an un-condensed turn
+  // lands ~0.44; an out-of-corpus question lands ~0.33.
+  //
+  // The earlier 0.4/0.3 pair called that 0.44 "strong", which is the worst
+  // possible error here: the agent answers confidently from passages that do
+  // not contain the answer.
   confidence: {
-    strong: 0.4,
-    weak: 0.3,
+    strong: 0.6,
+    weak: 0.45,
   },
 
   /* -- Escalation --------------------------------------------------------- */

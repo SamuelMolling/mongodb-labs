@@ -126,7 +126,7 @@ async function keywordArticles(query, customer) {
             // index, still before any document reaches us.
             filter: [
               { in: { path: "audience", value: audienceFor(customer.plan) } },
-              { text: { query: "published", path: "status" } },
+              { equals: { path: "status", value: "published" } },
             ],
             minimumShouldMatch: 1,
           },

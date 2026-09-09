@@ -159,10 +159,11 @@ ok("RRF fuses by rank and a document found by two rankers outranks one found by 
   JSON.stringify(fused.map((f) => [f.id, Number(f.score.toFixed(5))])));
 
 ok("confidence bands map onto the tuning thresholds",
-  confidenceBand(0.55) === "strong" &&
-  confidenceBand(0.35) === "weak" &&
-  confidenceBand(0.1) === "none" &&
-  confidenceBand(null) === "none");
+  confidenceBand(0.8) === "strong" &&
+  confidenceBand(0.5) === "weak" &&
+  confidenceBand(0.33) === "none" &&
+  confidenceBand(null) === "none",
+  "thresholds calibrated against measured rerank-2 scores, see config.js");
 
 /* ========================================================================== */
 section("escalation policy");

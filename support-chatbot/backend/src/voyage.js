@@ -62,7 +62,7 @@ async function explainError(res, label) {
  * @returns {Promise<number[][]>}  One vector per input.
  */
 export async function embed(input, inputType = "document") {
-  const model = process.env.VOYAGE_EMBEDDING_MODEL || "voyage-3";
+  const model = process.env.VOYAGE_EMBEDDING_MODEL || "voyage-3.5";
   const texts = Array.isArray(input) ? input : [input];
 
   const res = await fetch(`${baseUrl()}/embeddings`, {
