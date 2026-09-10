@@ -14,6 +14,7 @@ import { retrievePassages } from "../retrieve.js";
 import { runRequestedTools, renderToolResult } from "../tools.js";
 import { evaluateEscalation, buildHandoffPacket } from "../policy.js";
 import { streamChat } from "../llm.js";
+import { tuning } from "../config.js";
 
 const router = Router();
 
@@ -127,7 +128,15 @@ router.post("/", async (req, res, next) => {
         originalMessage: message.trim(),
         customer: customer || {},
       });
-      send("passages", { passages: retrieval.passages, stats: retrieval.stats });
+      // Ship the thresholds with the passages. The inspector colours each
+      // score by band, and a second copy of these numbers in the frontend is
+      // a copy that drifts -- which it did, silently, the first time they
+      // were recalibrated here.
+      send("passages", {
+        passages: retrieval.passages,
+        stats: retrieval.stats,
+        thresholds: tuning.confidence,
+      });
     } else {
       // Smalltalk skips embedding + two vector searches + a rerank + five
       // passages in the prompt. "thanks, that worked" does not need a

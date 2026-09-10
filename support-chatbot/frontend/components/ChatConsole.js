@@ -100,6 +100,7 @@ export function ChatConsole() {
           onPassages: (evt) => {
             live.passages = evt.passages || [];
             live.stats = evt.stats;
+            live.thresholds = evt.thresholds;
             live.topScore = live.passages[0]?.rerankScore ?? null;
             setTurn({ ...live });
           },

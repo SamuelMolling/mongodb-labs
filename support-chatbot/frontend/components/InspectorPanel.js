@@ -17,10 +17,16 @@ const STAGES = [
   ["generating", "generate"],
 ];
 
-function bandOf(score) {
+/**
+ * Bands come from the server with the passages. Hardcoding them here means
+ * two sources of truth for one decision, and the copy that is not next to
+ * the retrieval code is the one that goes stale.
+ */
+function bandOf(score, thresholds) {
   if (typeof score !== "number") return "none";
-  if (score >= 0.4) return "strong";
-  if (score >= 0.3) return "weak";
+  if (!thresholds) return "none";
+  if (score >= thresholds.strong) return "strong";
+  if (score >= thresholds.weak) return "weak";
   return "none";
 }
 
@@ -34,8 +40,8 @@ export function InspectorPanel({ turn }) {
     );
   }
 
-  const { stage, condensed, passages, stats, done, escalation, skipped } = turn;
-  const band = bandOf(done?.topRerankScore ?? turn.topScore);
+  const { stage, condensed, passages, stats, done, escalation, skipped, thresholds } = turn;
+  const band = done?.confidence ?? bandOf(turn.topScore, thresholds);
 
   return (
     <aside className="inspector">
@@ -106,7 +112,7 @@ export function InspectorPanel({ turn }) {
                 <span className={`kind ${p.kind}`}>{p.kind}</span>
                 <span className="title">{p.title}</span>
                 <span
-                  className={`score ${bandOf(p.rerankScore)}`}
+                  className={`score ${bandOf(p.rerankScore, thresholds)}`}
                   style={{ marginLeft: "auto" }}
                 >
                   {p.rerankScore?.toFixed(3)}
