@@ -141,6 +141,19 @@ builds, and fields quietly searchable that were never meant to be.
 - An Atlas **Model API Key** (`al-…`) for Voyage via `ai.mongodb.com`
 - An OpenAI API key
 
+**On M0, check your index budget first.** This lab creates three search indexes
+(`kb_articles_search`, `kb_chunks_vector`, `tickets_vector`) and M0 allows
+three per cluster *in total*. If the `knowledge-base` lab is already indexed on
+the same cluster, `make indexes` fails partway through with:
+
+```
+The maximum number of FTS indexes has been reached for this instance size.
+```
+
+Drop the other lab's two indexes, or point this lab at a separate cluster. The
+ports are 4020/3020 so both labs can *run* side by side; on M0 the index quota
+is what actually stops you, not the ports.
+
 ### Quick start
 
 ```bash
