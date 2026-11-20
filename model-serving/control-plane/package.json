@@ -1,0 +1,25 @@
+{
+  "name": "model-serving-control-plane",
+  "version": "1.0.0",
+  "description": "ML Model Deployment and Serving Platform - Control plane",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "setup-db": "node scripts/setup-db.js",
+    "register": "node scripts/register.js",
+    "deploy": "node scripts/deploy.js",
+    "smoke": "node scripts/smoke.js",
+    "e2e": "node scripts/e2e.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongodb": "^6.10.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
