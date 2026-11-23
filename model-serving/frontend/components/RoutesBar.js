@@ -1,12 +1,12 @@
 import { bps, roleColor, roleOf } from "../lib/format";
 
-export function RoutesBar({ routes, compact = false }) {
+export function RoutesBar({ routes, compact = false, flowing = false }) {
   const live = (routes || []).filter((r) => r.mode === "live");
   const shadow = (routes || []).find((r) => r.mode === "shadow");
   if (live.length === 0) return <p className="empty">Nothing is serving yet. Promote a version below.</p>;
   return (
     <div>
-      <div className={`strip${compact ? " compact" : ""}`} role="img"
+      <div className={`strip${compact ? " compact" : ""}${flowing ? " flowing" : ""}`} role="img"
         aria-label={live.map((r) => `v${r.version} ${roleOf(routes, r.versionId)} ${bps(r.weight)}`).join(", ")}>
         {live.map((r) => {
           const role = roleOf(routes, r.versionId);

@@ -66,7 +66,7 @@ function ModelRow({ model: m }) {
         </div>
       </div>
       <div className="split">
-        <RoutesBar routes={m.deployment?.routes} />
+        <RoutesBar routes={m.deployment?.routes} flowing={requests > 0 && fleet?.liveNodes > 0} />
       </div>
       <dl className="signals">
         <div>

@@ -114,11 +114,12 @@ export function ModelConsole({ modelId }) {
         <div>
           <div className="serving-top">
             <h2 id="serving-title">Serving now</h2>
+            <LivePill on={requests > 0 && fleet?.liveNodes > 0} />
             <span className="rev">Revision <b>{dep.revision}</b>, changed {ago(dep.updatedAt)} by {dep.updatedBy}</span>
             <button className="sm danger" disabled={busy} onClick={ops.rollback}
               title="Put the most recently archived version back in production">Roll back</button>
           </div>
-          <RoutesBar routes={routes} />
+          <RoutesBar routes={routes} flowing={requests > 0 && fleet?.liveNodes > 0} />
           {canaryRoute && (
             <CanaryControl route={canaryRoute} busy={busy}
               onSet={(w) => ops.canary(versions.find((v) => String(v._id) === String(canaryRoute.versionId)), w)} />
@@ -236,6 +237,10 @@ export function ModelConsole({ modelId }) {
       {toast && <Toast t={toast} />}
     </main>
   );
+}
+
+function LivePill({ on }) {
+  return <span className={`live-pill${on ? " on" : ""}`}><i aria-hidden />{on ? "Taking traffic" : "No traffic"}</span>;
 }
 
 function Toast({ t }) {
