@@ -288,15 +288,28 @@ pre.json {
   font-family: var(--mono); color: var(--ink-2); max-height: 240px; overflow-y: auto;
 }
 
-.models { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: 1.25rem; }
-.model-link { display: block; background: var(--surface); border-radius: 18px; padding: 1.4rem 1.5rem; color: var(--ink); border: 1px solid transparent; transition: border-color 140ms ease-out; }
-.model-link:hover { text-decoration: none; border-color: var(--ink-3); }
-.model-link h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
-.model-link .task { color: var(--ink-3); font-size: 13.5px; }
-.model-link p { margin: .3rem 0 1.1rem; color: var(--ink-2); }
-.model-link .foot { margin-top: .9rem; font-size: 13px; color: var(--ink-3); display: flex; gap: 1.25rem; flex-wrap: wrap; }
+.home-head { margin-bottom: 1.75rem; }
 .page-title { margin: 0 0 .3rem; font-size: clamp(30px, 4vw, 44px); letter-spacing: -.025em; line-height: 1.05; }
-.page-sub { margin: 0 0 2rem; color: var(--ink-2); max-width: 62ch; }
+.page-sub { margin: 0; color: var(--ink-2); max-width: 62ch; }
+.model-list { display: grid; gap: 1rem; }
+.model-row {
+  display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 1.6fr) minmax(200px, .8fr);
+  gap: clamp(1.25rem, 3vw, 2.5rem); align-items: center;
+  background: var(--surface); border-radius: 20px; padding: clamp(1.25rem, 2.5vw, 2rem);
+  color: var(--ink); border: 1px solid transparent; transition: border-color 140ms ease-out;
+}
+.model-row:hover { text-decoration: none; border-color: var(--ink-3); }
+.model-row h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+.model-row .who p { margin: .3rem 0 .9rem; color: var(--ink-2); }
+.model-row .foot { display: flex; flex-direction: column; gap: .15rem; font-size: 13px; color: var(--ink-3); }
+.signals { margin: 0; display: grid; gap: .9rem; padding-left: clamp(1.25rem, 3vw, 2.5rem); border-left: 1px solid var(--rule-soft); }
+.signals dt { font-size: 13px; color: var(--ink-3); }
+.signals dd { margin: .1rem 0 0; }
+.signals dd.big { font-size: 30px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+@media (max-width: 1000px) {
+  .model-row { grid-template-columns: minmax(0, 1fr); }
+  .signals { padding-left: 0; border-left: 0; padding-top: 1.25rem; border-top: 1px solid var(--rule-soft); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .drift-report { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; align-items: start; }
 @media (max-width: 1000px) { .drift-report { grid-template-columns: minmax(0, 1fr); } }
