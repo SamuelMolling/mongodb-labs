@@ -1,13 +1,9 @@
-/**
- * Status = icon + label + reserved color. Never color alone (colorblind,
- * print, forced-colors), and never a series color.
- */
 const MAP = {
   good: { ico: "✓", cls: "good" },
   warning: { ico: "!", cls: "warning" },
   serious: { ico: "▲", cls: "serious" },
   critical: { ico: "✕", cls: "critical" },
-  muted: { ico: "·", cls: "muted" },
+  muted: { ico: "–", cls: "muted" },
 };
 
 export function Status({ kind = "muted", children, title }) {

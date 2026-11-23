@@ -20,22 +20,24 @@ export default function Home() {
 
   return (
     <main className="page">
-      <div className="head-row"><h1>Models</h1></div>
-      {error && <div className="toast err">Control plane unreachable: {error}. Is <code>make dev</code> running?</div>}
+      <h1 className="page-title">Models</h1>
+      <p className="page-sub">Each model has one deployment. Its traffic split lives in a single document that every serving node watches.</p>
+      {error && <div className="toast err" role="status">Can’t reach the control plane ({error}). Start it with <code>make dev</code>.</div>}
       {models && models.length === 0 && (
-        <div className="card">
-          <p>No models registered. Run <code>make setup</code> from the lab root.</p>
-        </div>
+        <p className="empty">No models registered yet. Run <code>make setup</code> from the lab root.</p>
       )}
-      <div className="grid two">
+      <div className="models">
         {(models || []).map((m) => (
-          <Link key={m._id} href={`/models/${m._id}`} className="card model-card">
-            <h2>{m._id} <span className="right muted small">{m.task}</span></h2>
-            <p className="lead">{m.description}</p>
-            <RoutesBar routes={m.deployment?.routes} />
-            <p className="muted small" style={{ marginBottom: 0 }}>
-              {m.lastVersion} version(s) · deployment revision {m.deployment?.revision ?? "—"} · changed {ago(m.deployment?.updatedAt)}
-            </p>
+          <Link key={m._id} href={`/models/${m._id}`} className="model-link">
+            <h2>{m._id}</h2>
+            <div className="task">{m.task}</div>
+            <p>{m.description}</p>
+            <RoutesBar routes={m.deployment?.routes} compact />
+            <div className="foot">
+              <span>{m.lastVersion} {m.lastVersion === 1 ? "version" : "versions"}</span>
+              <span>Revision {m.deployment?.revision ?? "–"}</span>
+              <span>Changed {ago(m.deployment?.updatedAt)}</span>
+            </div>
           </Link>
         ))}
       </div>

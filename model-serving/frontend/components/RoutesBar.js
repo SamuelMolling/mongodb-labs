@@ -1,38 +1,31 @@
 import { bps, roleColor, roleOf } from "../lib/format";
 
-/** Live traffic split as one segmented bar; shadow listed separately (it gets copies, not a share). */
-export function RoutesBar({ routes }) {
+export function RoutesBar({ routes, compact = false }) {
   const live = (routes || []).filter((r) => r.mode === "live");
   const shadow = (routes || []).find((r) => r.mode === "shadow");
-  if (live.length === 0) return <p className="muted">Nothing deployed yet. Promote a version below.</p>;
+  if (live.length === 0) return <p className="empty">Nothing is serving yet. Promote a version below.</p>;
   return (
     <div>
-      <div className="routes-bar" role="img"
-        aria-label={live.map((r) => `v${r.version} ${bps(r.weight)}`).join(", ")}>
-        {live.map((r) => (
-          <div key={String(r.versionId)} className="seg"
-            style={{ flex: r.weight, background: roleColor(roleOf(routes, r.versionId)) }}
-            title={`v${r.version} — ${bps(r.weight)} of live traffic`}>
-            v{r.version} · {bps(r.weight)}
-          </div>
-        ))}
-      </div>
-      <div className="legend">
+      <div className={`strip${compact ? " compact" : ""}`} role="img"
+        aria-label={live.map((r) => `v${r.version} ${roleOf(routes, r.versionId)} ${bps(r.weight)}`).join(", ")}>
         {live.map((r) => {
           const role = roleOf(routes, r.versionId);
           return (
-            <span key={String(r.versionId)}>
-              <i className="swatch" style={{ background: roleColor(role) }} /> v{r.version} {role} · {bps(r.weight)}
-            </span>
+            <div key={String(r.versionId)} className={`seg${r.weight < 2000 ? " narrow" : ""}`}
+              style={{ flexGrow: r.weight, flexBasis: 0, background: roleColor(role), color: role === "canary" ? "var(--ink)" : "#fff" }}
+              title={`v${r.version} ${role}: ${bps(r.weight)} of live traffic`}>
+              <span className="ver">v{r.version}</span>
+              <span className="share">{bps(r.weight)} <span className="role">{role}</span></span>
+            </div>
           );
         })}
-        {shadow && (
-          <span>
-            <i className="swatch" style={{ background: roleColor("shadow") }} /> v{shadow.version} shadow · copy of
-            every request, never answers
-          </span>
-        )}
       </div>
+      {shadow && (
+        <div className="shadow-note">
+          <i className="swatch" style={{ background: roleColor("shadow") }} />
+          <span><b>v{shadow.version} shadow</b> scores a copy of every request and never answers.</span>
+        </div>
+      )}
     </div>
   );
 }

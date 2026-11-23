@@ -27,7 +27,10 @@ router.get("/", h(async (_req, res) => {
         _id: d._id,
         revision: d.revision,
         updatedAt: d.updatedAt,
-        routes: d.routes.map((r) => ({ ...r, version: vmap.get(String(r.versionId))?.version ?? null })),
+        routes: d.routes.map((r) => {
+          const v = vmap.get(String(r.versionId));
+          return { ...r, version: v?.version ?? null, stage: v?.stage ?? null };
+        }),
       },
     };
   }));

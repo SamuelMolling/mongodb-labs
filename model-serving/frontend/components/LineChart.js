@@ -68,13 +68,13 @@ export function LineChart({ series, height = 170, yFormat = (v) => v, yMin = 0, 
           );
         })}
         {endLabels(series, sx, sy).map((l) => (
-          <text key={l.key} x={l.x + 6} y={l.y + 4} fill="var(--text)" fontSize="11" fontFamily="var(--mono)">{l.label}</text>
+          <text key={l.key} x={l.x + 6} y={l.y + 4} fill="var(--ink-2)" fontSize="11.5" fontWeight="600" fontFamily="var(--sans)">{l.label}</text>
         ))}
         {hover != null && (
           <g>
-            <line x1={sx(hover)} x2={sx(hover)} y1={pad.t} y2={H - pad.b} stroke="var(--muted)" strokeDasharray="3 3" />
+            <line x1={sx(hover)} x2={sx(hover)} y1={pad.t} y2={H - pad.b} stroke="var(--ink-3)" strokeDasharray="3 3" />
             {hoverRows.map(({ s, p }) => (
-              <circle key={s.key} cx={sx(p.x)} cy={sy(p.y)} r="4" fill={s.color} stroke="var(--panel)" strokeWidth="2" />
+              <circle key={s.key} cx={sx(p.x)} cy={sy(p.y)} r="4" fill={s.color} stroke="var(--surface)" strokeWidth="2" />
             ))}
           </g>
         )}
