@@ -153,7 +153,7 @@ export function ModelConsole({ modelId }) {
         <section className="block">
           <div className="block-head"><h2>Requests per minute</h2></div>
           <div className="panel">
-            <LineChart series={toSeries(data.timeline, routes, "n")} yFormat={(v) => Math.round(v)} />
+            <LineChart series={toSeries(data.timeline, routes, "n", minutes)} yFormat={(v) => Math.round(v)} />
           </div>
         </section>
         <section className="block">
@@ -162,7 +162,7 @@ export function ModelConsole({ modelId }) {
             <p className="note">Share of requests scored at or above the threshold</p>
           </div>
           <div className="panel">
-            <LineChart series={toSeries(data.timeline, routes, "positiveRate")} yFormat={(v) => pct(v, 0)} />
+            <LineChart series={toSeries(data.timeline, routes, "positiveRate", minutes)} yFormat={(v) => pct(v, 0)} />
           </div>
         </section>
       </div>
@@ -296,7 +296,7 @@ function Fleet({ fleet }) {
             <span className={`dot ${cls}`} aria-hidden />
             <span className="name">{n.nodeId}</span>
             <span className="rv">{label}, r{n.revision ?? "–"}</span>
-            <span className="meta">{int(n.stats?.requests)} requests, {int(n.stats?.changeEvents)} change events, seen {ago(n.lastSeen)}</span>
+            <span className="meta">{int(n.stats?.requests)} requests, {int(n.stats?.changeEvents)} change {n.stats?.changeEvents === 1 ? "event" : "events"}, seen {ago(n.lastSeen)}</span>
             {n.lastError && <span className="err">{n.lastError}</span>}
           </div>
         );
@@ -557,9 +557,13 @@ function Playground({ modelId, routes }) {
   );
 }
 
-function toSeries(timeline, routes, field) {
+function toSeries(timeline, routes, field, minutes) {
   const groups = new Map();
+  const openMinute = Math.floor(Date.now() / 60000) * 60000;
+  const firstFull = openMinute - (minutes - 1) * 60000;
   for (const p of timeline?.points || []) {
+    const t = new Date(p.minute).getTime();
+    if (t >= openMinute || t < firstFull) continue;
     const key = `${p.versionId}|${p.mode}`;
     if (!groups.has(key)) {
       const role = p.mode === "shadow" ? "shadow" : roleOf(routes, p.versionId);
