@@ -20,6 +20,7 @@ Each directory in this repository contains an independent project or experiment 
 |---|---|---|
 | [`knowledge-base`](knowledge-base/) | Node.js · Next.js | AI search platform — Atlas Search + Vector Search, RRF hybrid ranking, Voyage rerank, streaming RAG answers |
 | [`support-chatbot`](support-chatbot/) | Node.js · Next.js | Context-aware support agent — query condensation, tiered conversation memory, two retrieval corpora, entitlement via `$vectorSearch` filters, escalation policy |
+| [`model-serving`](model-serving/) | Node.js · Python · Next.js | ML model deployment and serving platform — registry, transactional promotion, canary/shadow routing, change-stream propagation, time series evidence, drift checks |
 | [`csfle`](csfle/) | Go | Client-Side Field Level Encryption with a local master key |
 | [`csfle-py`](csfle-py/) | Python | Client-Side Field Level Encryption, Python driver |
 | [`queryable-encryption`](queryable-encryption/) | Go · Python | Queryable Encryption — searching encrypted fields without decrypting them |
